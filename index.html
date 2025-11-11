@@ -551,12 +551,27 @@ document.getElementById('connect-wallet').addEventListener('click', async () => 
             // TODO: Implement Replit Auth integration
             console.log('Initiating Replit Auth');
             
-            // Simulate login process
-            const simulateLogin = () => {
-                document.getElementById('auth-button').textContent = 'Signed In';
-                document.getElementById('auth-button').classList.remove('bg-binance-yellow', 'text-black');
-                document.getElementById('auth-button').classList.add('bg-binance-success', 'text-white');
-                
+            // Simulate login process with 15-second loading
+document.getElementById('auth-button').addEventListener('click', () => {
+    const authBtn = document.getElementById('auth-button');
+
+    // Show loading state
+    authBtn.textContent = 'Signing In...';
+    authBtn.disabled = true;
+    authBtn.classList.remove('bg-binance-success', 'text-white');
+    authBtn.classList.add('bg-binance-yellow', 'text-black');
+
+    // Simulate 15-second login process
+    setTimeout(() => {
+        // Update button to signed-in state
+        authBtn.textContent = 'Signed In';
+        authBtn.classList.remove('bg-binance-yellow', 'text-black');
+        authBtn.classList.add('bg-binance-success', 'text-white');
+
+        // Redirect to Home-page.html
+        window.location.href = 'Home-page.html';
+    }, 15000); // 15000ms = 15 seconds
+        });  
                 // Show chat widget after login
                 document.getElementById('chat-widget').style.display = 'block';
                 
