@@ -420,19 +420,14 @@
   const APP_SHORT_NAME = 'Web3';
   const THEME_COLOR = '#0b74de';
   const BACKGROUND_COLOR = '#ffffff';
-    const ICON_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
+    const ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
   <rect width="100%" height="100%" fill="#F3BA2F"/>
-  <img href="https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png"   alt="Binance Logo"  class="w-8 h-8 rounded-full" />                
-</svg>`;
+     <img id="binance-logo" src="https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png"   alt="Binance Logo"  class="w-8 h-8 rounded-full" />
+     </svg>`;
 
-// Encode properly
-function base64EncodeUnicode(str) {
-    return btoa(unescape(encodeURIComponent(str)));
-}
+const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
 
-const ICON_DATA_URL = 'data:image/svg+xml;base64,' + base64EncodeUnicode(ICON_SVG);
-  /* =========================
+    /* =========================
      State
      ========================= */
   let deferredPrompt = null;
