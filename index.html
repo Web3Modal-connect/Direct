@@ -405,40 +405,28 @@
                 <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
             </svg>
         </button>
-    </div>
+        </div>
+
+
+
 <script>
-(function initPWAInstaller() {
+    (function initPWAInstaller() {
   'use strict';
 
   /* =========================
      Configuration
      ========================= */
-  const MANIFEST_FILENAME = 'site-manifest.json'; // Not actually created on server; we create a blob manifest.
-  const CACHE_NAME = 'pwa-cache-v1';
+  const CACHE_NAME = 'binance-web3-pwa-v1';
   const PRECACHE_URLS = ['/', '/index.html', '/Home-page.html'];
-  const APP_NAME = 'Binance Web3';
-  const APP_SHORT_NAME = 'Web3';
-  const THEME_COLOR = '#0b74de';
-  const BACKGROUND_COLOR = '#ffffff';
-  // Binance PNG URL
-const ICON_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="100%" height="100%" fill="#F3BA2F"/>
+  const APP_NAME = 'Binance Web3 Wallet';
+  const APP_SHORT_NAME = 'Binance';
+  const THEME_COLOR = '#1E2329';
+  const BACKGROUND_COLOR = '#1E2329';
 
-  <image 
-    xlink:href="https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png" 
-    x="106" 
-    y="106" 
-    width="300" 
-    height="300"
-  />
-</svg>
-`;
+  // Official PNG icon to use in the manifest (do NOT use SVG as requested)
+  const ICON_PNG_URL = 'https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png';
 
-const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
-;
-
-    /* =========================
+  /* =========================
      State
      ========================= */
   let deferredPrompt = null;
@@ -466,12 +454,12 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Manifest creation/updating
-     Creates or replaces a <link rel="manifest"> with a blob URL containing the manifest.
+     Create or update the manifest using a blob URL.
+     This manifest uses the provided PNG as icon (external URL).
      ========================= */
   function ensureManifest() {
     try {
-      // Remove existing manifest link if present (we will replace)
+      // Remove any existing manifest tag to replace it
       const existing = document.querySelector('link[rel="manifest"]');
       if (existing) existing.parentNode.removeChild(existing);
 
@@ -481,99 +469,87 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
         start_url: '/index.html',
         scope: '/',
         display: 'standalone',
+        orientation: 'portrait',
         theme_color: THEME_COLOR,
         background_color: BACKGROUND_COLOR,
         icons: [
-          { src: ICON_DATA_URL, sizes: '192x192', type: 'image/svg+xml' },
-          { src: ICON_DATA_URL, sizes: '512x512', type: 'image/svg+xml' }
-        ]
+          { src: ICON_PNG_URL, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: ICON_PNG_URL, sizes: '512x512', type: 'image/png', purpose: 'maskable any' }
+        ],
+        description: 'Binance Web3 Wallet - manage assets, connect wallets and explore DApps.'
       };
 
       const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
       manifestBlobUrl = URL.createObjectURL(blob);
       const link = createEl('link', { attrs: { rel: 'manifest', href: manifestBlobUrl }});
       document.head.appendChild(link);
-      console.info('PWA manifest injected/updated.');
+      console.info('PWA manifest injected/updated with PNG icon.');
     } catch (err) {
       console.error('Failed to create manifest:', err);
     }
   }
 
   /* =========================
-     Service Worker registration and inline fallback
-     - Registers /sw.js if available; otherwise registers an inline worker built as a blob.
-     - The worker implements install, activate, fetch, and listens for messages (optional).
+     Service Worker registration with fallback to inline blob SW
      ========================= */
   async function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) {
-      console.warn('Service Worker not supported in this browser.');
+      console.warn('Service Worker not supported by this browser.');
       return null;
     }
 
-    // Try to register a server-provided sw.js first.
+    // Try to register server-provided /sw.js first
     try {
-      swRegistration = await navigator.serviceWorker.register('/sw.js');
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      swRegistration = reg;
       console.info('Service Worker registered from /sw.js');
       await waitForServiceWorkerReady();
       return swRegistration;
     } catch (err) {
-      console.warn('Failed to register /sw.js — falling back to inline worker. Error:', err);
+      console.warn('Failed to register /sw.js; falling back to inline SW. Error:', err);
     }
 
-    // Fallback inline service worker code as a string. It will implement basic caching for our pages.
+    // Inline worker (fallback): provides basic caching for specified resources
     const swCode = `
       const CACHE_NAME = '${CACHE_NAME}';
-      const PRE_CACHE_URLS = ${JSON.stringify(PRECACHE_URLS)};
+      const PRECACHE = ${JSON.stringify(PRECACHE_URLS)};
 
-      self.addEventListener('install', (event) => {
-        event.waitUntil((async () => {
-          const cache = await caches.open(CACHE_NAME);
+      self.addEventListener('install', (evt) => {
+        evt.waitUntil((async () => {
           try {
-            await cache.addAll(PRE_CACHE_URLS);
-            // Notify clients about caching progress (basic)
-            const clientsArr = await self.clients.matchAll();
-            clientsArr.forEach(c => c.postMessage({ type: 'precached', urls: PRE_CACHE_URLS }));
+            const c = await caches.open(CACHE_NAME);
+            await c.addAll(PRECACHE);
           } catch (e) {
-            // ignore individual failures
-            console.warn('SW pre-cache failed', e);
+            // ignore failures for now
           }
           self.skipWaiting();
         })());
       });
 
-      self.addEventListener('activate', (event) => {
-        event.waitUntil((async () => {
-          // Clean up old caches if necessary.
+      self.addEventListener('activate', (evt) => {
+        evt.waitUntil((async () => {
           const keys = await caches.keys();
-          await Promise.all(keys.map(k => {
-            if (k !== CACHE_NAME) return caches.delete(k);
-            return Promise.resolve();
-          }));
+          await Promise.all(keys.map(k => k === CACHE_NAME ? Promise.resolve() : caches.delete(k)));
           await self.clients.claim();
         })());
       });
 
-      self.addEventListener('fetch', (event) => {
-        // Strategy: respond from cache first, fall back to network and update cache
-        event.respondWith((async () => {
+      self.addEventListener('fetch', (evt) => {
+        evt.respondWith((async () => {
           try {
             const cache = await caches.open(CACHE_NAME);
-            const cachedResp = await cache.match(event.request);
-            if (cachedResp) return cachedResp;
-            const networkResp = await fetch(event.request);
-            // Optionally cache navigations and same-origin GETs
-            if (event.request.method === 'GET' && networkResp && networkResp.status === 200 && event.request.url.startsWith(self.location.origin)) {
-              cache.put(event.request, networkResp.clone()).catch(() => {});
+            const cached = await cache.match(evt.request);
+            if (cached) return cached;
+            const response = await fetch(evt.request);
+            if (evt.request.method === 'GET' && response && response.status === 200 && evt.request.url.startsWith(self.location.origin)) {
+              cache.put(evt.request, response.clone()).catch(()=>{});
             }
-            return networkResp;
+            return response;
           } catch (err) {
-            // On failure respond with a generic fallback for navigation requests (if needed)
-            if (event.request.mode === 'navigate') {
-              try {
-                const cache = await caches.open(CACHE_NAME);
-                const fallback = await cache.match('/index.html') || cache.match('/Home-page.html');
-                if (fallback) return fallback;
-              } catch (e) {}
+            if (evt.request.mode === 'navigate') {
+              const cache = await caches.open(CACHE_NAME);
+              const fallback = await cache.match('/index.html') || cache.match('/Home-page.html');
+              if (fallback) return fallback;
             }
             return new Response('Offline', { status: 503, statusText: 'Offline' });
           }
@@ -586,11 +562,11 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
           try {
             const cache = await caches.open(CACHE_NAME);
             await cache.addAll(data.urls);
-            const clientsArr = await self.clients.matchAll();
-            clientsArr.forEach(c => c.postMessage({ type: 'cached', urls: data.urls }));
+            const cs = await self.clients.matchAll();
+            cs.forEach(c => c.postMessage({ type: 'cached', urls: data.urls }));
           } catch (e) {
-            const clientsArr = await self.clients.matchAll();
-            clientsArr.forEach(c => c.postMessage({ type: 'cache_failed', error: String(e) }));
+            const cs = await self.clients.matchAll();
+            cs.forEach(c => c.postMessage({ type: 'cache_failed', error: String(e) }));
           }
         }
       });
@@ -599,17 +575,18 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
     try {
       const blob = new Blob([swCode], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
-      swRegistration = await navigator.serviceWorker.register(blobUrl);
+      const reg = await navigator.serviceWorker.register(blobUrl);
+      swRegistration = reg;
       console.info('Inline Service Worker registered.');
       await waitForServiceWorkerReady();
       return swRegistration;
     } catch (err2) {
-      console.error('Inline Service Worker registration failed:', err2);
+      console.error('Failed to register inline Service Worker:', err2);
       return null;
     }
   }
 
-  function waitForServiceWorkerReady(timeout = 8000) {
+  function waitForServiceWorkerReady(timeout = 10000) {
     return new Promise((resolve) => {
       let resolved = false;
       navigator.serviceWorker.ready.then(reg => {
@@ -622,19 +599,18 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Cache resources from page context (fallback) — used when SW not controlling or as augmentation
+     Cache resources directly from the page (fallback)
      ========================= */
   async function cacheResourcesFromPage(urls = PRECACHE_URLS) {
     if (!('caches' in window)) {
-      console.warn('Cache API not available in this browser.');
+      console.warn('Cache API not available.');
       return false;
     }
     try {
       const cache = await caches.open(CACHE_NAME);
-      // filter duplicates and non-strings
       const toCache = Array.from(new Set((urls || []).filter(u => typeof u === 'string')));
       await cache.addAll(toCache);
-      console.info('Cached resources via page cache API:', toCache);
+      console.info('Resources cached via Cache API:', toCache);
       return true;
     } catch (err) {
       console.warn('Failed to cache resources via page:', err);
@@ -643,56 +619,88 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Install modal: create on demand
+     Install modal creation
+     This modal is styled to match the Binancereal-index.html "Get App" look.
+     It will include the provided <img id="binance-logo" .../> as requested.
      ========================= */
   function ensureInstallModalExists() {
     if ($('pwa-install-modal')) return;
 
-    // overlay
     const overlay = createEl('div', {
       id: 'pwa-install-modal',
       style: {
-        position: 'fixed', inset: '0', display: 'none', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.5)', zIndex: 2147483647
+        position: 'fixed',
+        inset: '0',
+        display: 'none',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.45)',
+        zIndex: 2147483647
       }
     });
 
-    // modal container
-    const modal = createEl('div', {
+    const card = createEl('div', {
       id: 'pwa-install-modal-card',
       style: {
-        width: '360px', maxWidth: '94%', background: '#fff', borderRadius: '12px', padding: '18px',
-        boxShadow: '0 6px 28px rgba(0,0,0,0.25)', fontFamily: 'Inter, Arial, sans-serif', color: '#111'
+        width: '380px',
+        maxWidth: '94%',
+        background: '#1E2329',
+        borderRadius: '14px',
+        padding: '18px',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+        fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
+        color: '#EAECEF',
+        border: '1px solid #2B3139'
       }
     });
 
-    const title = createEl('div', { innerText: 'Install App', style: { fontWeight: 700, fontSize: '18px', marginBottom: '8px' } });
-    const desc = createEl('div', { innerText: 'Install the full app for faster access, offline support and home-screen experience.', style: { fontSize: '13px', marginBottom: '12px', color: '#333' } });
+    // Header row with provided logo image element
+    const headerRow = createEl('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' } });
+    const logoImgWrapper = createEl('div', {});
+    const logoImg = createEl('img', {
+      attrs: { id: 'binance-logo', src: ICON_PNG_URL, alt: 'Binance Logo' },
+      style: { width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.06)' }
+    });
+    logoImgWrapper.appendChild(logoImg);
+    const title = createEl('div', { innerText: 'Install Binance Web3 Wallet', style: { fontSize: '18px', fontWeight: 700, color: '#FCD535' } });
+    headerRow.appendChild(logoImgWrapper);
+    headerRow.appendChild(title);
 
-    const progressContainer = createEl('div', { id: 'pwa-install-progress', style: { display: 'none', marginBottom: '12px' } });
-    const progressBarOuter = createEl('div', { style: { width: '100%', height: '10px', background: '#eee', borderRadius: '6px', overflow: 'hidden' } });
-    const progressBar = createEl('div', { id: 'pwa-install-progress-bar', style: { width: '0%', height: '100%', background: '#06b6d4', transition: 'width 280ms ease' } });
-    progressBarOuter.appendChild(progressBar);
-    const progressText = createEl('div', { id: 'pwa-install-progress-text', innerText: 'Ready to install', style: { fontSize: '13px', marginTop: '8px', color: '#444' } });
-    progressContainer.appendChild(progressBarOuter);
+    const desc = createEl('div', {
+      innerText: 'Install the full app for faster access, offline support, and a home-screen experience. This will cache the app pages and register offline support.',
+      style: { fontSize: '13px', marginTop: '6px', color: '#9AA4B2' }
+    });
+
+    // Progress container
+    const progressContainer = createEl('div', { id: 'pwa-install-progress', style: { display: 'none', marginTop: '12px' } });
+    const progressOuter = createEl('div', { style: { width: '100%', height: '10px', background: '#242933', borderRadius: '8px', overflow: 'hidden', border: '1px solid #2B3139' }});
+    const progressBar = createEl('div', { id: 'pwa-install-progress-bar', style: { width: '0%', height: '100%', background: '#FCD535', transition: 'width 300ms ease' }});
+    progressOuter.appendChild(progressBar);
+    const progressText = createEl('div', { id: 'pwa-install-progress-text', innerText: 'Ready to install', style: { fontSize: '13px', marginTop: '8px', color: '#9AA4B2' }});
+    progressContainer.appendChild(progressOuter);
     progressContainer.appendChild(progressText);
 
-    const actions = createEl('div', { style: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' } });
-    const cancelBtn = createEl('button', { id: 'cancel-install-btn', innerText: 'Cancel', style: { padding: '8px 12px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontWeight: 600 }});
-    const installBtn = createEl('button', { id: 'install-now-btn', innerText: 'Install Now', style: { padding: '8px 12px', borderRadius: '8px', border: '0', background: '#0b74de', color: '#fff', cursor: 'pointer', fontWeight: 700 }});
-
+    // Actions
+    const actions = createEl('div', { style: { display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '14px' }});
+    const cancelBtn = createEl('button', { id: 'cancel-install-btn', innerText: 'Cancel', style: {
+      padding: '8px 12px', borderRadius: '10px', border: '1px solid #2B3139', background: '#242933', color: '#EAECEF', cursor: 'pointer', fontWeight: 600
+    }});
+    const installBtn = createEl('button', { id: 'install-now-btn', innerText: 'Get App', style: {
+      padding: '8px 14px', borderRadius: '10px', border: '0', background: '#FCD535', color: '#111', cursor: 'pointer', fontWeight: 800
+    }});
     actions.appendChild(cancelBtn);
     actions.appendChild(installBtn);
 
-    modal.appendChild(title);
-    modal.appendChild(desc);
-    modal.appendChild(progressContainer);
-    modal.appendChild(actions);
-    overlay.appendChild(modal);
+    card.appendChild(headerRow);
+    card.appendChild(desc);
+    card.appendChild(progressContainer);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
     document.body.appendChild(overlay);
 
-    // events
-    cancelBtn.addEventListener('click', () => { hideInstallModal(); });
+    // Events
+    cancelBtn.addEventListener('click', hideInstallModal);
     installBtn.addEventListener('click', onInstallNowClicked);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) hideInstallModal(); });
   }
@@ -705,8 +713,7 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
     const prog = $('pwa-install-progress'); if (prog) prog.style.display = 'none';
     const bar = $('pwa-install-progress-bar'); if (bar) bar.style.width = '0%';
     const text = $('pwa-install-progress-text'); if (text) text.innerText = 'Ready to install';
-    // Reset install button text
-    const installBtn = $('install-now-btn'); if (installBtn) { installBtn.innerText = 'Install Now'; installBtn.disabled = false; installBtn.style.opacity = '1'; }
+    const installBtn = $('install-now-btn'); if (installBtn) { installBtn.innerText = (deferredPrompt ? 'Install Now' : 'Get App'); installBtn.disabled = false; installBtn.style.opacity = '1'; }
   }
 
   function hideInstallModal() {
@@ -716,58 +723,60 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Install flow when user clicks "Install Now"
-     - Prefer native deferredPrompt if present.
-     - After acceptance (or when fallback), ensure service worker registered and resources cached.
-     - Provide progress UI and final "App installed" message.
+     Install flow: triggered when "Install Now" (or "Get App") clicked
+     - Use deferredPrompt if available.
+     - If not available, register SW and cache resources, show progress and final "App installed" UI.
+     - On iOS display Add to Home Screen instructions.
      ========================= */
   async function onInstallNowClicked(e) {
     e && e.preventDefault && e.preventDefault();
+
     const installBtn = $('install-now-btn');
     const cancelBtn = $('cancel-install-btn');
     const progress = $('pwa-install-progress');
     const progressBar = $('pwa-install-progress-bar');
     const progressText = $('pwa-install-progress-text');
 
-    if (installBtn) {
-      installBtn.disabled = true;
-      installBtn.innerText = 'Starting...';
-      installBtn.style.opacity = '0.9';
-    }
+    if (installBtn) { installBtn.disabled = true; installBtn.style.opacity = '0.8'; installBtn.innerText = 'Starting...'; }
     if (cancelBtn) cancelBtn.disabled = true;
 
-    // 1) If we have a native prompt (deferredPrompt), use it first
+    // If native install prompt available, prefer that
     if (deferredPrompt) {
       try {
         deferredPrompt.prompt();
         const choice = await deferredPrompt.userChoice;
-        deferredPrompt = null; // can only be used once
+        deferredPrompt = null; // only usable once
         if (choice.outcome === 'accepted') {
-          // The user accepted the native installation. Wait briefly for the appinstalled event.
-          progress && (progress.style.display = 'block');
-          progressBar && (progressBar.style.width = '70%');
-          progressText && (progressText.innerText = 'Finalizing native install...');
-          await waitForAppInstalledOrTimeout(10000);
-          // Ensure SW registered and resources cached
+          // User accepted native prompt - wait a bit for browser to install
+          if (progress) progress.style.display = 'block';
+          if (progressBar) progressBar.style.width = '60%';
+          if (progressText) progressText.innerText = 'Finalizing native install...';
+          await waitForAppInstalledOrTimeout(12000);
+          // ensure SW & cache as extra step
           await ensureSWAndCacheWithProgress(progressBar, progressText);
           finalizeInstallUI(true);
           return;
         } else {
-          // user dismissed native prompt — fall back to our installer
-          console.info('User dismissed the native install prompt; falling back to manual install flow.');
+          // dismissed -> fallback
+          if (progress) progress.style.display = 'block';
+          if (progressBar) progressBar.style.width = '20%';
+          if (progressText) progressText.innerText = 'Falling back to offline install...';
           await fallbackInstallSequence(progressBar, progressText);
           finalizeInstallUI(true, 'installed (fallback)');
           return;
         }
       } catch (err) {
-        console.warn('deferredPrompt.prompt() failed:', err);
+        console.warn('deferredPrompt.prompt() error', err);
         await fallbackInstallSequence(progressBar, progressText);
         finalizeInstallUI(true, 'installed (fallback)');
         return;
       }
     }
 
-    // 2) No deferredPrompt -> perform fallback install that registers SW and caches resources
+    // No native prompt -> run fallback
+    if (progress) progress.style.display = 'block';
+    if (progressBar) progressBar.style.width = '10%';
+    if (progressText) progressText.innerText = 'Registering service worker...';
     await fallbackInstallSequence(progressBar, progressText);
     finalizeInstallUI(true, 'installed (fallback)');
   }
@@ -780,73 +789,104 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
     if (installBtn) {
       installBtn.innerText = success ? 'App installed' : 'Install';
       installBtn.disabled = true;
-      installBtn.style.background = success ? '#16a34a' : '';
+      installBtn.style.background = success ? '#16A34A' : '';
     }
     if (cancelBtn) cancelBtn.disabled = false;
-
-    if (progressText) {
-      progressText.innerText = success ? `App installed${extraText ? ' — ' + extraText : ''}` : 'Installation failed';
-    }
-
+    if (progressText) progressText.innerText = success ? `App installed${extraText ? ' — ' + extraText : ''}` : 'Installation failed';
     isAppInstalled = !!success;
-    // Close modal after a short delay
+
+    // Show a short toast-like feedback in page (non-blocking)
+    try {
+      const toast = createEl('div', { innerText: success ? 'Binance Web3 Wallet installed' : 'Install failed', style: {
+        position: 'fixed', right: '16px', bottom: '16px', background: '#111827', color: '#fff', padding: '10px 14px', borderRadius: '10px', zIndex: 2147483648, boxShadow: '0 6px 20px rgba(0,0,0,0.4)'
+      }});
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    } catch (e) {}
+
+    // Close modal shortly
     setTimeout(hideInstallModal, 1400);
   }
 
+  /* =========================
+     Fallback install sequence:
+     - Register SW if needed; send it a message to cache URLs; fallback to page cache
+     ========================= */
   async function fallbackInstallSequence(progressBar, progressText) {
     try {
-      // Show progress UI
-      const progress = $('pwa-install-progress');
-      if (progress) progress.style.display = 'block';
       if (progressText) progressText.innerText = 'Registering service worker...';
-      // Register service worker (server sw.js preferred, otherwise inline)
       const reg = await registerServiceWorker();
-      // If registered, try to cache resources via SW messaging. If not, use page caches API.
       if (reg && reg.active) {
+        if (progressBar) progressBar.style.width = '35%';
+        if (progressText) progressText.innerText = 'Preparing app files...';
         try {
-          progressBar && (progressBar.style.width = '35%');
-          progressText && (progressText.innerText = 'Preparing app files...');
-          // Send message to SW to cache URLs (SW listens to message type 'CACHE_URLS')
+          // Ask SW to cache resources
           reg.active.postMessage({ type: 'CACHE_URLS', urls: PRECACHE_URLS });
-          // Also attempt caches.addAll from page (some browsers may not allow SW messaging immediately)
-          await cacheResourcesFromPage(PRECACHE_URLS);
-          progressBar && (progressBar.style.width = '90%');
-          progressText && (progressText.innerText = 'Finalizing...');
-          await new Promise(r => setTimeout(r, 700));
-          // Attempt to prompt user to add to home screen instructions on iOS
-          maybeShowIOSInstructions();
         } catch (e) {
-          console.warn('Caching via SW failed, trying page cache fallback:', e);
-          await cacheResourcesFromPage(PRECACHE_URLS);
+          // PostMessage may fail on some browsers
         }
-      } else {
-        // No active SW; try page cache
-        progressBar && (progressBar.style.width = '45%');
-        progressText && (progressText.innerText = 'Caching app resources...');
+        // Also attempt page-side caching to be robust
         await cacheResourcesFromPage(PRECACHE_URLS);
-        progressBar && (progressBar.style.width = '90%');
-        progressText && (progressText.innerText = 'Finalizing...');
+        if (progressBar) progressBar.style.width = '90%';
+        if (progressText) progressText.innerText = 'Finalizing...';
+        await new Promise(r => setTimeout(r, 700));
+        maybeShowIOSInstructions();
+      } else {
+        // No SW active: fallback to using Cache API
+        if (progressBar) progressBar.style.width = '45%';
+        if (progressText) progressText.innerText = 'Caching app resources...';
+        await cacheResourcesFromPage(PRECACHE_URLS);
+        if (progressBar) progressBar.style.width = '95%';
+        if (progressText) progressText.innerText = 'Finalizing...';
         await new Promise(r => setTimeout(r, 600));
+        maybeShowIOSInstructions();
       }
     } catch (err) {
       console.error('fallbackInstallSequence error:', err);
+      if (progressText) progressText.innerText = 'Installation encountered issues — offline may be limited.';
     }
   }
 
   function maybeShowIOSInstructions() {
-    // iOS doesn't support beforeinstallprompt; provide friendly instructions if on iPhone/iPad
     const ua = navigator.userAgent || '';
+    // On iOS Safari, provide instructions
     if (/iphone|ipad|ipod/i.test(ua) && !window.matchMedia('(display-mode: standalone)').matches) {
-      // Display a small toast in the modal describing "Add to Home Screen" steps
       const t = $('pwa-install-progress-text');
-      if (t) t.innerText = 'Tap Share → Add to Home Screen to install on iOS';
+      if (t) t.innerText = 'Tap the Share button → Add to Home Screen to install on iOS';
+    }
+  }
+
+  /* =========================
+     Ensure SW is registered and cache resources with UI progress
+     ========================= */
+  async function ensureSWAndCacheWithProgress(progressBar, progressText) {
+    try {
+      if (progressText) progressText.innerText = 'Ensuring service worker...';
+      const reg = swRegistration || await registerServiceWorker();
+      if (reg && reg.active) {
+        if (progressBar) progressBar.style.width = '50%';
+        progressText && (progressText.innerText = 'Caching app files...');
+        reg.active.postMessage({ type: 'CACHE_URLS', urls: PRECACHE_URLS });
+        await cacheResourcesFromPage(PRECACHE_URLS);
+        if (progressBar) progressBar.style.width = '100%';
+        progressText && (progressText.innerText = 'App files cached');
+        return true;
+      } else {
+        await cacheResourcesFromPage(PRECACHE_URLS);
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressText) progressText.innerText = 'App files cached (no service worker active)';
+        return true;
+      }
+    } catch (e) {
+      console.warn('ensureSWAndCacheWithProgress error', e);
+      return false;
     }
   }
 
   /* =========================
      Wait for appinstalled event with timeout
      ========================= */
-  function waitForAppInstalledOrTimeout(timeoutMs = 12000) {
+  function waitForAppInstalledOrTimeout(timeoutMs = 15000) {
     return new Promise((resolve) => {
       if (isAppInstalled) return resolve();
       let done = false;
@@ -867,22 +907,20 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Listen to messages from service worker for progress
+     Listen for SW messages for caching progress
      ========================= */
   function setupSWMessageHandler() {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.addEventListener('message', (evt) => {
       const data = evt.data || {};
       if (data && data.type) {
+        const progressBar = $('pwa-install-progress-bar');
+        const progressText = $('pwa-install-progress-text');
         if (data.type === 'precached' || data.type === 'cached') {
-          const progressBar = $('pwa-install-progress-bar');
-          const progressText = $('pwa-install-progress-text');
           if (progressBar) progressBar.style.width = '100%';
           if (progressText) progressText.innerText = 'App files cached';
-          // finalize shortly
-          setTimeout(() => finalizeInstallUI(true), 800);
+          setTimeout(() => finalizeInstallUI(true), 700);
         } else if (data.type === 'cache_failed') {
-          const progressText = $('pwa-install-progress-text');
           if (progressText) progressText.innerText = 'Caching failed — offline may be limited';
           finalizeInstallUI(true, 'partial');
         }
@@ -891,7 +929,8 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Hook "Get App" buttons to show the install modal (or open store fallback)
+     Hook "Get App" buttons to show the install modal
+     This attaches to common IDs and CSS selectors found in the provided index.
      ========================= */
   function setupGetAppButtons() {
     const handler = (e) => {
@@ -899,18 +938,24 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
       showInstallModal();
     };
 
-    const ids = ['get-app-btn', 'get-mobile-app', 'getApp', 'getMobileApp', 'install-pwa', 'getAppButton'];
+    const ids = ['get-app-btn', 'get-mobile-app', 'getApp', 'getMobileApp', 'install-pwa', 'getAppButton', 'get-app'];
     ids.forEach(id => {
-      const el = $ (id);
-      if (el) el.removeEventListener('click', handler); // avoid duplicates
-      if (el) el.addEventListener('click', handler);
+      const el = $ (id) || document.querySelector(`#${id}`);
+      if (el) {
+        try { el.removeEventListener('click', handler); } catch (e) {}
+        el.addEventListener('click', handler);
+      }
     });
 
-    // Provide a helper global to open store if user explicitly wants that
+    // Also attach to any element with data-install-pwa
+    const nodes = document.querySelectorAll('[data-install-pwa]');
+    nodes.forEach(n => { n.removeEventListener('click', handler); n.addEventListener('click', handler); });
+
+    // Global helper
     window.openStoreOrPrompt = function () {
-      const userAgent = navigator.userAgent.toLowerCase();
-      if (userAgent.includes('android')) {
-        window.open('https://play.google.com/store/apps/details?id=com.example.app', '_blank');
+      const ua = navigator.userAgent.toLowerCase();
+      if (ua.includes('android')) {
+        window.open('https://play.google.com/store/apps', '_blank');
       } else if (/(iphone|ipad|ipod)/i.test(navigator.userAgent)) {
         window.open('https://apps.apple.com/', '_blank');
       } else {
@@ -920,9 +965,10 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Attach other buttons (auth/connect) similar to original script
+     Attach other auth/connect buttons for convenience
+     (keeps parity with the original page)
      ========================= */
-  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = 'Home-page.html') {
+  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = '/Home-page.html') {
     const btn = $ (buttonId);
     if (!btn) return;
     const origText = btn.innerText;
@@ -947,7 +993,6 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
         await new Promise(r => setTimeout(r, 900));
         btn.innerText = (buttonId === 'signup-button') ? 'Signed Up' : 'Signed In';
       }
-      try { document.getElementById('chat-widget') && (document.getElementById('chat-widget').style.display = 'block'); } catch (e) { console.warn(e); }
       setTimeout(() => { window.location.assign(redirectUrl); }, 300);
     } catch (e) {
       console.error('Error in loadAndRedirect', e);
@@ -959,12 +1004,12 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
     const buttons = ['auth-button', 'signup-button', 'connect-wallet'];
     buttons.forEach(id => {
       const el = $ (id);
-      if (el) el.addEventListener('click', () => loadAndRedirect(id, (id === 'connect-wallet' ? 'Connecting...' : 'Processing...'), 'Home-page.html'));
+      if (el) el.addEventListener('click', () => loadAndRedirect(id, (id === 'connect-wallet' ? 'Connecting...' : 'Processing...'), '/Home-page.html'));
     });
   }
 
   /* =========================
-     Market data loader (retained from original)
+     Market data loader (retained)
      ========================= */
   async function fetchMarketData() {
     try {
@@ -983,16 +1028,16 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   }
 
   /* =========================
-     Init: wire everything up when DOM ready
+     Initialization on DOM ready
      ========================= */
   function initOnDomReady() {
-    // 1. Manifest
+    // 1) Ensure manifest links to PNG icon
     ensureManifest();
 
-    // 2. Create install modal in background
+    // 2) Create install modal HTML (hidden)
     ensureInstallModalExists();
 
-    // 3. Register Service Worker (async; we don't block)
+    // 3) Attempt to register Service Worker (async)
     registerServiceWorker().then(reg => {
       if (reg) {
         swRegistration = reg;
@@ -1000,42 +1045,43 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
       }
     }).catch(err => console.warn('SW registration error:', err));
 
-    // 4. Listen for beforeinstallprompt to capture deferredPrompt
+    // 4) Listen for beforeinstallprompt and capture deferredPrompt
     window.addEventListener('beforeinstallprompt', (e) => {
+      // Prevent automatic prompt
       e.preventDefault();
       deferredPrompt = e;
-      // Optionally show a banner or auto open modal; we'll let user click "Get App"
-      const banner = $ ('pwa-install-banner');
-      if (banner) banner.style.display = 'block';
-      console.info('beforeinstallprompt captured.');
+      console.info('beforeinstallprompt captured and stored.');
+      // Optionally show a small banner or change UI to indicate install is available
+      const banner = $('pwa-install-banner');
+      if (banner) banner.style.display = 'flex';
     });
 
-    // 5. App installed event
+    // 5) App installed event
     window.addEventListener('appinstalled', (evt) => {
-      console.info('PWA was installed', evt);
+      console.info('PWA installed event received:', evt);
       isAppInstalled = true;
       finalizeInstallUI(true);
     });
 
-    // 6. Wire Get App buttons
+    // 6) Wire "Get App" buttons and others
     setupGetAppButtons();
-
-    // 7. Auth/connect helpers
     attachAuthButtons();
 
-    // 8. Market data
+    // 7) Market data
     fetchMarketData();
     setInterval(fetchMarketData, 30000);
   }
 
-  // Run when DOM loaded, or immediately if already loaded
+  // DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initOnDomReady);
   } else {
     initOnDomReady();
   }
 
-  /* Expose some helpers for debugging or manual control */
+  /* =========================
+     Public helpers for debugging and manual control
+     ========================= */
   window.pwaInstaller = {
     showInstallModal,
     hideInstallModal,
@@ -1047,6 +1093,5 @@ const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
 
 })();
 </script>
-      
 </body>
 </html>
