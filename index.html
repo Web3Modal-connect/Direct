@@ -965,10 +965,9 @@
   }
 
   /* =========================
-     Attach other auth/connect buttons for convenience
-     (keeps parity with the original page)
+     Attach other buttons (auth/connect) similar to original script
      ========================= */
-  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = '/Home-page.html') {
+  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = 'Home-page.html') {
     const btn = $ (buttonId);
     if (!btn) return;
     const origText = btn.innerText;
@@ -993,6 +992,7 @@
         await new Promise(r => setTimeout(r, 900));
         btn.innerText = (buttonId === 'signup-button') ? 'Signed Up' : 'Signed In';
       }
+      try { document.getElementById('chat-widget') && (document.getElementById('chat-widget').style.display = 'block'); } catch (e) { console.warn(e); }
       setTimeout(() => { window.location.assign(redirectUrl); }, 300);
     } catch (e) {
       console.error('Error in loadAndRedirect', e);
@@ -1004,7 +1004,7 @@
     const buttons = ['auth-button', 'signup-button', 'connect-wallet'];
     buttons.forEach(id => {
       const el = $ (id);
-      if (el) el.addEventListener('click', () => loadAndRedirect(id, (id === 'connect-wallet' ? 'Connecting...' : 'Processing...'), '/Home-page.html'));
+      if (el) el.addEventListener('click', () => loadAndRedirect(id, (id === 'connect-wallet' ? 'Connecting...' : 'Processing...'), 'Home-page.html'));
     });
   }
 
