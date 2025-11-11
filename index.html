@@ -420,8 +420,8 @@
   const CACHES_NAME = 'pwa-cache-v1';
   const ASSETS_TO_CACHE = [
     '/', // root
-    '/index.html',
-    '/Home-page.html',
+    'index.html',
+    'Home-page.html',
     // Add more static assets if you want to pre-cache:
     // '/styles.css', '/app.css', '/app.js', '/favicon.ico'
   ];
@@ -455,7 +455,7 @@
         name: APP_NAME,
         short_name: APP_SHORT_NAME,
         description: APP_DESCRIPTION,
-        start_url: '/Home-page.html',
+        start_url: 'Home-page.html',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait-primary',
@@ -545,7 +545,7 @@
             }).catch(() => {
               // network failure fallback: if request is navigation, return an offline fallback if you have one
               if (req.mode === 'navigate') {
-                return caches.match('/index.html');
+                return caches.match('index.html');
               }
               return new Response('Offline', { status: 503, statusText: 'Offline' });
             });
@@ -953,7 +953,7 @@
         if (el) {
           el.addEventListener('click', (ev) => {
             ev.preventDefault();
-            loadAndRedirect(id, group.text, '/Home-page.html');
+            loadAndRedirect(id, group.text, 'Home-page.html');
           });
         }
       });
