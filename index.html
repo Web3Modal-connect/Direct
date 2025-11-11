@@ -885,7 +885,7 @@
      - Buttons redirect to Home-page.html after success
      - Connect wallet attempts eth_requestAccounts if provider found
      ========================= */
-  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = '/Home-page.html') {
+  async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = 'Home-page.html') {
     const btn = $(buttonId);
     if (!btn) return;
     const origText = btn.innerText;
