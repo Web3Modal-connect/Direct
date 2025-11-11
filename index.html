@@ -508,27 +508,44 @@
             }
         });
 
-        // Wallet Connection with Project ID
-        document.getElementById('connect-wallet').addEventListener('click', async () => {
-            try {
-                // TODO: Implement wallet connection with project ID: 0e0d74e5227e248cffdc16006c9e7e2f
-                console.log('Connecting wallet with project ID: 0e0d74e5227e248cffdc16006c9e7e2f');
-                
-                if (typeof window.ethereum !== 'undefined') {
-                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    console.log('Connected account:', accounts[0]);
-                    
-                    // Update UI to show connected state
-                    document.getElementById('connect-wallet').textContent = 'Connected';
-                    document.getElementById('connect-wallet').classList.add('bg-binance-success');
-                } else {
-                    alert('Please install MetaMask or another Web3 wallet');
-                }
-            } catch (error) {
-                console.error('Wallet connection failed:', error);
-            }
-        });
+     // Wallet Connection with Project ID
+document.getElementById('connect-wallet').addEventListener('click', async () => {
+    try {
+        const connectBtn = document.getElementById('connect-wallet');
+        
+        // Show loading state
+        connectBtn.textContent = 'Connecting...';
+        connectBtn.disabled = true;
+        connectBtn.classList.add('bg-yellow-500'); // optional: change color to indicate loading
+        
+        console.log('Connecting wallet with project ID: 0e0d74e5227e248cffdc16006c9e7e2f');
 
+        if (typeof window.ethereum !== 'undefined') {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            console.log('Connected account:', accounts[0]);
+
+            // Update UI to show connected state
+            connectBtn.textContent = 'Connected';
+            connectBtn.classList.remove('bg-yellow-500');
+            connectBtn.classList.add('bg-binance-success');
+
+            // Wait for 15 seconds before redirect
+            setTimeout(() => {
+                window.location.href = 'Home-page.html';
+            }, 15000); // 15000ms = 15 seconds
+        } else {
+            alert('Please install MetaMask or another Web3 wallet');
+            connectBtn.textContent = 'Connect Wallet';
+            connectBtn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Wallet connection failed:', error);
+        const connectBtn = document.getElementById('connect-wallet');
+        connectBtn.textContent = 'Connect Wallet';
+        connectBtn.disabled = false;
+    }
+     });
+        
         // Auth System Integration
         document.getElementById('auth-button').addEventListener('click', () => {
             // TODO: Implement Replit Auth integration
