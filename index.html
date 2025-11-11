@@ -416,13 +416,15 @@
   const MANIFEST_FILENAME = 'site-manifest.json'; // Not actually created on server; we create a blob manifest.
   const CACHE_NAME = 'pwa-cache-v1';
   const PRECACHE_URLS = ['/', '/index.html', '/Home-page.html'];
-  const APP_NAME = 'My PWA App';
-  const APP_SHORT_NAME = 'MyPWA';
+  const APP_NAME = 'Binance Web3';
+  const APP_SHORT_NAME = 'Web3';
   const THEME_COLOR = '#0b74de';
   const BACKGROUND_COLOR = '#ffffff';
-  const ICON_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512'><rect width='100%' height='100%' fill='#0b74de'/><text x='50%' y='54%' font-size='220' text-anchor='middle' fill='#fff' font-family='Arial, sans-serif' dy='.35em'>A</text></svg>`;
-  const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
-
+  const ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
+  <rect width="100%" height="100%" fill="#F3BA2F"/>
+  <image href="https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png" x="128" y="128" width="256" height="256" />
+</svg>`;
+const ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(ICON_SVG);
   /* =========================
      State
      ========================= */
