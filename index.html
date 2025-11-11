@@ -406,8 +406,7 @@
             </svg>
         </button>
     </div>
-
-    <script>
+<script>
     // =========================
     // PWA Installation Logic
     // =========================
@@ -468,7 +467,7 @@
     });
 
     // =========================
-    // Unified Button Loader + Redirect
+    // Unified Loader + Redirect
     // =========================
     async function loadAndRedirect(buttonId, loadingText = 'Processing...', redirectUrl = 'Home-page.html') {
         const btn = document.getElementById(buttonId);
@@ -478,7 +477,6 @@
         btn.classList.add('bg-binance-yellow', 'text-black');
 
         try {
-            // Special case for wallet
             if (buttonId === 'connect-wallet') {
                 if (typeof window.ethereum !== 'undefined') {
                     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
@@ -493,7 +491,7 @@
                     return;
                 }
             } else {
-                // Simulate auth or signup process
+                // Simulate auth/signup process
                 await new Promise(resolve => setTimeout(resolve, 15000));
                 btn.textContent = 'Signed In';
                 btn.classList.remove('bg-binance-yellow', 'text-black');
@@ -506,10 +504,10 @@
                 loadUserData();
             }
 
-            // Redirect after 3 seconds for wallet or immediately for auth
+            // Force redirect
             setTimeout(() => {
-                window.location.href = redirectUrl;
-            }, buttonId === 'connect-wallet' ? 3000 : 0);
+                window.location.assign(redirectUrl);
+            }, buttonId === 'connect-wallet' ? 3000 : 100);
         } catch (error) {
             console.error('Error processing button:', error);
             btn.textContent = buttonId === 'connect-wallet' ? 'Connect Wallet' : 'Sign In';
@@ -517,8 +515,8 @@
         }
     }
 
-    // Attach unified loader to buttons
-    const buttons = ['auth-button', 'signup-button', 'connect-wallet']; // Add more if needed
+    // Attach unified loader to all relevant buttons
+    const buttons = ['auth-button', 'signup-button', 'connect-wallet'];
     buttons.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) btn.addEventListener('click', () => loadAndRedirect(id));
@@ -610,7 +608,7 @@
         fetchMarketData();
         checkAdminAccess();
     });
-                                                                   </script>
+</script>
       
 </body>
 </html>
