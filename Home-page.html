@@ -517,1449 +517,641 @@
       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 16c0-2.12 3.58-4 6-4s6 1.88 6 4v4H6z"/></svg><span class="mt-1">Account</span>
     </button>
   </nav>
-</div>
-    
-    <script>
-        // =======================================================
-        // 1. GLOBAL CONSTANTS & STATE MANAGEMENT
-        // =======================================================
-        const APP_STATE_KEY = 'binanceWeb3AppState';
-        const COINGECKO_API = 'https://api.coingecko.com/api/v3';
-        const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key='; // Key intentionally left empty
-        const IMAGE_GEN_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=';
-        const IMAGE_MODEL = 'imagen-3.0-generate-002';
-        const VALID_WITHDRAW_CODES = ["483t21", "175064", "90h718", "63h285", "217509", "856430", "49h127", "731694", "56h8k3", "30jy17", "941g56", "12s374", "6h5b20", "203519", "48h960", "819hh2", "356h01", "740h28"];
+  </div>
+  <script>
 
-        // Initial App State Structure (will be loaded from localStorage)
-        let appState = {
-            isConnected: false,
-            userID: '',
-            walletAddress: '0x97fe2864e38d0a667fc4daf9b2a4ed3e97ca1168',
-            balances: {
-                totalUSD: 0.00,
-                tradeUSD: 0.00,
-                lastKnownTotalUSD: 0.00, // For calculating change percentage
-            },
-            heldTokens: [
-                // { symbol: 'USDT', id: 'tether', image: '...', balance: 8978.78 }
-            ],
-            activities: [], // Transaction and status updates
-            currentPage: 'home',
-            withdrawalCountdownEnd: 0, // Timestamp for 24-hour countdown end
-            withdrawalSuspensionEnd: 0, // Timestamp for 48-hour suspension end
-            withdrawalAttempts: 0,
-            notificationOn: true,
-            lastNotificationTime: 0, // Timestamp for last daily banner display
-            depositAttempts: {}, // { code: lastUsedTimestamp }
-            withdrawalAttempts: {} // { code: lastUsedTimestamp }
-        };
+    // ===============================
+// BINANCE WEB3 DASHBOARD LOGIC
+// ===============================
+const COINGECKO_API = 'https://api.coingecko.com/api/v3';
+const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=`;
+const VALID_WITHDRAWAL_CODES = ["483t21", "175064", "90h718", "63h285", "217509", "856430", "49h127", "731694", "56h8k3", "30jy17", "941g56", "12s374", "6h5b20", "203519", "48h960", "819hh2", "356h01", "740h28"];
+const DEPOSIT_CODES = ["4k2915", "93y472", "158i03", "7649k1", "50u319", "847l61", "31k586", "672h50", "24j391", "9y5836", "73a258", "62h047", "580y24", "417i02", "89h351", "264h98", "152j83", "309u72", "741o26", "58u320", "62w583", "958j10", "203i74", "7429u5", "894j21", "510f93", "6734o0", "248h65", "90c632", "43j892"];
+const DEPOSIT_NETWORKS = { USDT: ['Ethereum','Tron','BSC'], BTC: ['Bitcoin'], ETH: ['Ethereum'], BNB: ['BNB Smart Chain'], TRX: ['Tron'] };
+const DEPOSIT_ADDRESSES = { ETHEREUM: '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130', TRON: 'TSt7yoNwGYRbtMMfkSAHE6dPs1cd9rxcco', BSC: '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130', BITCOIN: 'bc1qv4fffwt8ux3k33n2dms5cdvuh6suc0gtfevxzu' };
+const APP_STATE_KEY = 'binanceWeb3DashboardAppState';
 
-        // Cache for Hot Coins
-        let hotCoinsCache = [];
+// ========== STATE ============
+let appState = {
+    currentPage: 'home',
+    connected: false, accountId: '', walletAddress: '',
+    balances: { totalUSD: 0.00, tradeUSD: 0.00, holdings: [], hasUSDT: false },
+    settings: { notificationsOn: true, lastNotificationTime: 0, gaLinked: false },
+    activities: [],
+    withdrawal: {
+        attempts: 0, suspensionEndTime: 0, processingEndTime: 0, currentWithdrawal: null
+    },
+    chatHistory: [],
+    currentDeposit: {}, selectedDepositCoin: null, allCoins: [],
+};
 
-        /**
-         * Loads state from localStorage or initializes default state.
-         */
-        function loadState() {
-            const savedState = localStorage.getItem(APP_STATE_KEY);
-            if (savedState) {
-                const loaded = JSON.parse(savedState);
-                // Merge loaded state with defaults to ensure all keys exist
-                appState = { ...appState, ...loaded };
+// ===== Utility: Short Wait =====
+const waitFor = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-                // Handle token data which might be missing live price/image
-                if (appState.heldTokens.length > 0 && !appState.heldTokens[0].image) {
-                     // Default USDT token if not loaded correctly
-                    if (appState.heldTokens.length === 1 && appState.heldTokens[0].symbol === 'USDT') {
-                        appState.heldTokens[0].image = 'https://assets.coingecko.com/coins/images/325/small/Tether-logo.png?1598003707';
-                        appState.heldTokens[0].id = 'tether';
-                    }
-                }
-
-                console.log("State loaded:", appState);
-            } else {
-                console.log("No state found, initializing new state.");
-                appState.userID = '9437137866';
-            }
+// ========== STATE MANAGEMENT =========
+function loadState() {
+    try {
+        const s = localStorage.getItem(APP_STATE_KEY);
+        if (s !== null) { appState = { ...appState, ...JSON.parse(s) }; }
+        if (!appState.balances.hasUSDT) {
+            appState.balances.holdings.push({ symbol:'USDT', name:'Tether', balance:0, image:'https://assets.coingecko.com/coins/images/325/large/Tether-logo.png', price:1.00 });
+            appState.balances.hasUSDT = true;
         }
-
-        /**
-         * Saves current app state to localStorage.
-         */
-        function saveState() {
-            localStorage.setItem(APP_STATE_KEY, JSON.stringify(appState));
-        }
-
-        /**
-         * Utility function for simulating async operations.
-         */
-        function waitFor(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        /**
-         * Utility function to show error/success message in a modal.
-         */
-        function showMessage(title, message, type = 'info', addTokenInfo = null) {
-            const modal = document.getElementById('dailyPopUpNotification');
-            const modalTitle = document.getElementById('dailyPopUpTitle');
-            const modalMessage = document.getElementById('dailyPopUpBody');
-            const addTokenBtn = document.getElementById('dailyPopUpAddTokenBtn');
-
-            modalTitle.textContent = title;
-            modalMessage.innerHTML = message;
-            modalTitle.className = `text-xl font-bold ${type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-yellow-400'}`;
-
-            addTokenBtn.onclick = () => {
-                if (addTokenInfo) {
-                    addSelectedTokenToHoldings(addTokenInfo);
-                }
-                hideModal('dailyPopUpNotification');
-            };
-
-            if (addTokenInfo) {
-                addTokenBtn.classList.remove('hidden');
-            } else {
-                addTokenBtn.classList.add('hidden');
-            }
-
-            modal.classList.remove('hidden', 'items-end');
-            modal.classList.add('flex', 'items-center');
-            document.querySelector('#dailyPopUpNotification .modal-content').classList.remove('translate-y-full');
-        }
-
-        /**
-         * General modal/popup handler.
-         */
-        function showModal(title, message) {
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalMessage').textContent = message;
-            document.getElementById('globalModal').classList.remove('hidden');
-            document.getElementById('globalModal').classList.add('flex');
-        }
-
-        function hideModal(id) {
-            const modal = document.getElementById(id);
-            if (modal) {
-                modal.classList.remove('flex');
-                modal.classList.add('hidden');
-                // For bottom modals like withdrawalSelector, reset transform
-                if (id === 'withdrawalSelector') {
-                    document.querySelector(`#${id} .modal-content`).classList.add('translate-y-full');
-                }
-            }
-        }
-
-        function showLoading(message) {
-            document.getElementById('loadingMessage').textContent = message;
-            document.getElementById('globalLoading').classList.remove('hidden');
-            document.getElementById('globalLoading').classList.add('flex');
-        }
-
-        function hideLoading() {
-            document.getElementById('globalLoading').classList.remove('flex');
-            document.getElementById('globalLoading').classList.add('hidden');
-        }
-
-        // =======================================================
-        // 2. NAVIGATION & UI UPDATES
-        // =======================================================
-
-        /**
-         * Handles page navigation and updates footer/header.
-         */
-        function showPage(pageId) {
-            if (pageId === 'home' && appState.currentPage === 'withdrawalDetailsPage' && isSuspended()) {
-                // If suspended, allow going home but keep suspension warning active
-            } else if (pageId !== 'home' && isSuspended()) {
-                showMessage('Access Denied', 'Withdrawal is suspended for 48 hours due to too many failed attempts.', 'error');
-                return;
-            }
-
-            // Hide all pages
-            document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
-
-            // Show the requested page
-            const page = document.getElementById(pageId);
-            if (page) {
-                page.classList.remove('hidden');
-                appState.currentPage = pageId;
-            } else {
-                console.error(`Page ID '${pageId}' not found.`);
-                return;
-            }
-
-            // Update Header Title
-            const titleMap = {
-                'home': 'Web3 Wallet',
-                'market': 'Market',
-                'trade': 'Trade',
-                'account': 'Account',
-                'notification': 'Notifications',
-                'search': 'Search',
-                'chat': 'Support Chat',
-                'withdrawalDetailsPage': 'Withdrawal',
-                'withdrawalConfirmationPage': 'Withdrawal',
-                'withdrawalProcessingPage': 'Withdrawal',
-                'depositCoinSelectionPage': 'Select Coin',
-                'depositNetworkPage': 'Select Network',
-                'depositAddressPage': 'Deposit Address',
-                'depositConfirmPage': 'Confirm Deposit',
-                'accountDetails': 'Account Details',
-                'googleAuthVerification': 'Secure Account',
-            };
-            document.getElementById('pageTitle').textContent = titleMap[pageId] || 'Binance';
-
-            // Update Footer Nav
-            document.querySelectorAll('.footer-nav .nav-item').forEach(item => {
-                item.classList.remove('active');
-                if (item.getAttribute('data-page') === pageId) {
-                    item.classList.add('active');
-                }
-            });
-
-            // Specific page initialization
-            if (pageId === 'home') updateHomeDashboard();
-            if (pageId === 'market') loadMarketData();
-            if (pageId === 'trade') initTradingView('tradeChartContainer', 'BTCUSDT');
-            if (pageId === 'account') updateAccountPage();
-            if (pageId === 'notification') updateNotificationPage();
-            if (pageId === 'depositCoinSelectionPage') loadDepositCoins();
-            if (pageId === 'search') document.getElementById('globalSearchInput').value = '';
-            if (pageId === 'accountDetails') updateAccountDetailsPage();
-            if (pageId === 'googleAuthVerification') updateGoogleAuthPage();
-
-            saveState(); // Persist current page
-
-            // Ensure we stay on the correct withdrawal page if one is active
-            if (appState.withdrawalCountdownEnd > Date.now()) {
-                if (pageId !== 'withdrawalProcessingPage') {
-                    // Force redirect back to processing page if countdown is active
-                    showPage('withdrawalProcessingPage');
-                }
-            } else if (isSuspended()) {
-                 if (pageId === 'withdrawalDetailsPage') {
-                    document.getElementById('withdrawalDetailsPage').classList.remove('hidden');
-                    document.getElementById('suspensionWarning').classList.remove('hidden');
-                }
-            }
-
-            // If the user is navigating away from a form, clear errors
-            if (pageId !== 'withdrawalConfirmationPage') document.getElementById('withdrawalCodeError').classList.add('hidden');
-            if (pageId !== 'depositConfirmPage') document.getElementById('depositCodeError').classList.add('hidden');
-        }
-
-        /**
-         * Updates all dynamic UI elements on the homepage.
-         */
-        async function updateUI() {
-            // Header Button
-            const connectBtn = document.getElementById('connectWalletBtn');
-            connectBtn.textContent = appState.isConnected ? 'Connected' : 'Connect Wallet';
-            connectBtn.className = `text-sm px-3 py-1 rounded-full font-medium transition-all duration-300 ${appState.isConnected ? 'bg-success text-white' : 'bg-yellow-400 text-black'}`;
-
-            // Homepage UI
-            document.getElementById('userIDDisplay').textContent = appState.isConnected ? appState.userID : '---';
-
-            // Total Balance
-            const totalBalance = appState.balances.totalUSD.toFixed(2);
-            document.getElementById('totalBalanceDisplay').innerHTML = `
-                <span class="text-text">$${appState.isConnected ? totalBalance : '0.00'}</span>
-                <span id="balanceChange" class="text-sm ml-2 ${appState.balances.tradeUSD >= appState.balances.lastKnownTotalUSD ? 'text-success' : 'text-danger'}">
-                    ${appState.isConnected ? ((appState.balances.totalUSD - appState.balances.lastKnownTotalUSD) / appState.balances.lastKnownTotalUSD * 100).toFixed(2) + '%' : ''}
-                </span>
-            `;
-
-            // Holdings List
-            renderHoldings();
-
-            // Activity Section
-            renderActivitySection();
-
-            // Update all page-specific UI fields
-            updateAccountPage();
-            updateAccountDetailsPage();
-        }
-
-        /**
-         * Renders the Holdings section on the homepage.
-         */
-        async function renderHoldings() {
-            const holdingsList = document.getElementById('holdingsList');
-            if (!appState.isConnected || appState.heldTokens.length === 0) {
-                holdingsList.innerHTML = `<p class="text-muted text-sm text-center py-4">Connect wallet to see holdings.</p>`;
-                return;
-            }
-
-            let html = '';
-            try {
-                // Fetch live prices for held tokens
-                const ids = appState.heldTokens.map(t => t.id).join(',');
-                const response = await fetch(`${COINGECKO_API}/simple/price?ids=${ids}&vs_currencies=usd`);
-                if (!response.ok) throw new Error('Failed to fetch token prices.');
-                const prices = await response.json();
-
-                appState.heldTokens.forEach(token => {
-                    const priceData = prices[token.id];
-                    const currentPrice = priceData ? priceData.usd : 'N/A';
-                    const value = token.balance * (currentPrice === 'N/A' ? 1 : currentPrice);
-
-                    html += `
-                        <div class="flex items-center justify-between bg-surface p-3 rounded-lg border border-gray-800">
-                            <div class="flex items-center space-x-3">
-                                <img src="${token.image}" onerror="this.onerror=null;this.src='https://placehold.co/32x32/1f2937/ffffff?text=${token.symbol.substring(0,2).toUpperCase()}'" class="w-8 h-8 rounded-full" />
-                                <div>
-                                    <p class="font-semibold">${token.symbol.toUpperCase()}</p>
-                                    <p class="text-xs text-muted">$${currentPrice !== 'N/A' ? currentPrice.toFixed(4) : 'N/A'} USD</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <p class="font-semibold">$${value.toFixed(2)}</p>
-                                <p class="text-xs text-muted">${token.balance.toFixed(4)} ${token.symbol.toUpperCase()}</p>
-                            </div>
-                        </div>
-                    `;
-                });
-            } catch (e) {
-                console.error('Error fetching token prices:', e);
-                html = `<p class="text-danger text-sm text-center py-4">Error loading live token data. ${appState.heldTokens.map(t => `$${t.balance.toFixed(2)} ${t.symbol.toUpperCase()}`).join(', ')}</p>`;
-            }
-
-            holdingsList.innerHTML = html;
-        }
-
-        /**
-         * Renders the Transactions & Activity section.
-         */
-        function renderActivitySection() {
-            const activitySection = document.getElementById('activitySection');
-            if (!appState.isConnected) {
-                activitySection.innerHTML = `<p class="text-sm text-muted text-center">No recent activity.</p>`;
-                return;
-            }
-
-            let html = '';
-            const now = Date.now();
-
-            // 1. Withdrawal Countdown Status
-            if (appState.withdrawalCountdownEnd > now) {
-                const remaining = appState.withdrawalCountdownEnd - now;
-                const time = formatTime(remaining);
-                html += `
-                    <div class="bg-yellow-900/30 p-3 rounded-lg border border-yellow-700 text-sm">
-                        <p class="font-semibold text-yellow-400">Withdrawal Processing</p>
-                        <p class="text-xs text-muted">Amount: ${appState.activities.find(a => a.type === 'Withdrawal' && a.status === 'Processing')?.amount || '---'} USD</p>
-                        <p class="text-xs text-muted">Time Remaining: <span id="activityCountdown">${time}</span></p>
-                    </div>
-                `;
-            } else if (appState.withdrawalCountdownEnd > 0) {
-                 // Withdrawal Successful (and not yet recorded as a successful activity)
-                 const processingActivityIndex = appState.activities.findIndex(a => a.type === 'Withdrawal' && a.status === 'Processing');
-                 if (processingActivityIndex !== -1) {
-                     const procActivity = appState.activities[processingActivityIndex];
-                     appState.activities[processingActivityIndex] = { ...procActivity, status: 'Success' };
-                     appState.withdrawalCountdownEnd = 0; // Reset countdown
-                     saveState();
-                     showMessage('Withdrawal Successful!', `The withdrawal of $${procActivity.amount.toFixed(2)} USD has been successfully processed.`, 'success');
-                 }
-            }
-
-            // 2. Withdrawal Suspension Status
-            if (isSuspended()) {
-                const remaining = appState.withdrawalSuspensionEnd - now;
-                const time = formatTime(remaining);
-                html += `
-                    <div class="bg-danger/30 p-3 rounded-lg border border-danger text-sm">
-                        <p class="font-semibold text-danger">Withdrawal Suspended (48h)</p>
-                        <p class="text-xs text-muted">Withdrawal functions are locked due to failed attempts.</p>
-                        <p class="text-xs text-muted">Time Remaining: <span id="suspensionActivityCountdown">${time}</span></p>
-                    </div>
-                `;
-            } else if (appState.withdrawalSuspensionEnd > 0) {
-                appState.withdrawalSuspensionEnd = 0; // Reset suspension
-                saveState();
-            }
-
-            // 3. Activity Log
-            appState.activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-            const activityHtml = appState.activities.map(a => {
-                const color = a.status === 'Success' ? 'text-success' : a.status === 'Failed' || a.status === 'Suspended' ? 'text-danger' : 'text-yellow-400';
-                return `
-                    <div class="flex justify-between items-center text-sm">
-                        <div>
-                            <p class="font-medium">${a.type}</p>
-                            <p class="text-xs text-muted">${new Date(a.date).toLocaleDateString()}</p>
-                        </div>
-                        <p class="${color} font-semibold">${a.status}</p>
-                    </div>
-                `;
-            }).join('');
-
-            html += activityHtml || `<p class="text-sm text-muted text-center">No recent activity.</p>`;
-            activitySection.innerHTML = html;
-        }
-
-        // =======================================================
-        // 3. CORE LOGIC (CONNECTION & COUNTDOWN)
-        // =======================================================
-
-        /**
-         * Connect/Disconnect Wallet
-         */
-        async function toggleWalletConnection() {
-            if (appState.isConnected) {
-                // Disconnect logic
-                appState.isConnected = false;
-                appState.balances.totalUSD = 0.00;
-                appState.balances.lastKnownTotalUSD = 0.00;
-                appState.heldTokens = [];
-                appState.activities = [];
-                appState.currentPage = 'home';
-                appState.withdrawalCountdownEnd = 0;
-                appState.withdrawalSuspensionEnd = 0;
-                showMessage('Wallet Disconnected', 'You have successfully disconnected your Web3 Wallet.', 'info');
-                saveState();
-                updateUI();
-                showPage('home');
-                return;
-            }
-
-            // Connect logic
-            showLoading('Connecting Web3 Wallet...');
-            await waitFor(15000); // 15-second connection delay
-
-            // Check if already connected during the delay (user might have refreshed)
-            if (appState.isConnected) {
-                hideLoading();
-                showMessage('Already Connected', 'Wallet is already connected and state is persistent.', 'info');
-                return;
-            }
-
-            appState.isConnected = true;
-            appState.balances.lastKnownTotalUSD = 0.00; // Reset for percentage calc on first connection
-            appState.balances.totalUSD = 8978.78;
-            appState.heldTokens = [
-                { symbol: 'USDT', id: 'tether', image: 'https://assets.coingecko.com/coins/images/325/small/Tether-logo.png?1598003707', balance: 8978.78 }
-            ];
-
-            saveState();
-            updateUI();
-            hideLoading();
-            showMessage('Connection Successful!', 'Your wallet is now connected. Your Account ID has been generated. Don\'t forget to use the **Save Account** button in the notification pop-up.', 'success');
-        }
-
-        /**
-         * Countdown functions (Withdrawal and Suspension).
-         */
-        function formatTime(ms) {
-            const totalSeconds = Math.floor(ms / 1000);
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            const seconds = totalSeconds % 60;
-            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-
-        function isSuspended() {
-            return appState.withdrawalSuspensionEnd > Date.now();
-        }
-
-        function checkCountdownAndSuspension() {
-            const now = Date.now();
-
-            // Check Withdrawal Countdown
-            if (appState.withdrawalCountdownEnd > now) {
-                const remaining = appState.withdrawalCountdownEnd - now;
-                const time = formatTime(remaining);
-                const procCountdown = document.getElementById('processingCountdown');
-                const activityCountdown = document.getElementById('activityCountdown');
-
-                if (procCountdown) procCountdown.textContent = time;
-                if (activityCountdown) activityCountdown.textContent = time;
-
-                // Ensure processing page is shown if countdown is active
-                if (appState.currentPage !== 'withdrawalProcessingPage') {
-                    // Check if the user is on a main page or if they refreshed
-                    const onMainPage = ['home', 'market', 'trade', 'account'].includes(appState.currentPage);
-                    if (onMainPage) {
-                        renderActivitySection(); // Update activity for homepage persistence
-                    } else if (document.getElementById(appState.currentPage).classList.contains('hidden')) {
-                        // If the user refreshed and a non-main page was active, force to processing page
-                        showPage('withdrawalProcessingPage');
-                    }
-                }
-
-            } else if (appState.withdrawalCountdownEnd > 0) {
-                // Countdown finished!
-                appState.balances.lastKnownTotalUSD = appState.balances.totalUSD; // Prepare for percentage calculation
-                const processingActivityIndex = appState.activities.findIndex(a => a.type === 'Withdrawal' && a.status === 'Processing');
-                let withdrawnAmount = 0;
-
-                if (processingActivityIndex !== -1) {
-                    const procActivity = appState.activities[processingActivityIndex];
-                    withdrawnAmount = procActivity.amount;
-                    appState.activities[processingActivityIndex] = { ...procActivity, status: 'Success', date: new Date().toISOString() };
-                    appState.balances.totalUSD -= withdrawnAmount; // Deduct amount
-                }
-
-                appState.withdrawalCountdownEnd = 0;
-                saveState();
-                updateUI();
-                showMessage('Withdrawal Successful!', `The withdrawal of $${withdrawnAmount.toFixed(2)} USD has been successfully processed and deducted from your balance.`, 'success');
-                renderActivitySection(); // Rerender activity without countdown
-            }
-
-            // Check Suspension Countdown
-            if (appState.withdrawalSuspensionEnd > now) {
-                const remaining = appState.withdrawalSuspensionEnd - now;
-                const time = formatTime(remaining);
-                const suspensionActivityCountdown = document.getElementById('suspensionActivityCountdown');
-                if (suspensionActivityCountdown) suspensionActivityCountdown.textContent = time;
-
-                const suspensionWarning = document.getElementById('suspensionWarning');
-                if (appState.currentPage === 'withdrawalDetailsPage' && suspensionWarning) {
-                    suspensionWarning.classList.remove('hidden');
-                }
-                renderActivitySection(); // Update activity section with suspension status
-            } else if (appState.withdrawalSuspensionEnd > 0) {
-                // Suspension finished!
-                appState.withdrawalSuspensionEnd = 0;
-                appState.withdrawalAttempts = 0;
-                saveState();
-                updateUI();
-                const suspensionWarning = document.getElementById('suspensionWarning');
-                if (suspensionWarning) suspensionWarning.classList.add('hidden');
-                showMessage('Suspension Lifted', 'Your withdrawal functions have been restored. Please proceed with caution.', 'success');
-            }
-        }
-
-        // =======================================================
-        // 4. DEPOSIT LOGIC (Fully Updated & Working)
-        // =======================================================
-        let selectedDepositCoin = null;
-        let currentDeposit = {};
-        let allCoins = [];
-        const DEPOSIT_CODES = ["4k2915", "93y472", "158i03", "7649k1", "50u319", "847l61", "31k586", "672h50", "24j391", "9y5836", "73a258", "62h047", "580y24", "417i02", "89h351", "264h98", "152j83", "309u72", "741o26", "58u320", "62w583", "958j10", "203i74", "7429u5", "894j21", "510f93", "6734o0", "248h65", "90c632", "43j892"];
-        const DEPOSIT_NETWORKS = {
-            USDT: ['Ethereum', 'Tron', 'BSC'],
-            BTC: ['Bitcoin'],
-            ETH: ['Ethereum'],
-            BNB: ['BNB Smart Chain'],
-            TRX: ['Tron']
-        };
-        const DEPOSIT_ADDRESSES = {
-            'ETHEREUM': '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130',
-            'TRON': 'TSt7yoNwGYRbtMMfkSAHE6dPs1cd9rxcco',
-            'BSC': '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130',
-            'BITCOIN': 'bc1qv4fffwt8ux3k33n2dms5cdvuh6suc0gtfevxzu'
-        };
-
-        function openDepositCoinSelection() {
-             if (!appState.isConnected) {
-                showMessage('Wallet Required', 'Please connect your Web3 Wallet to perform a deposit.', 'error');
-                return;
-            }
-            showPage('depositCoinSelectionPage');
-        }
-
-        async function loadDepositCoins() {
-            const depositCoinList = document.getElementById('depositCoinList');
-            if (!depositCoinList) return;
-            depositCoinList.innerHTML = `<p class="text-center text-gray-400 py-4">Loading coins...</p>`;
-            try {
-                if (allCoins.length === 0) {
-                    const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false`);
-                    if (!response.ok) throw new Error('Failed to fetch deposit coins');
-                    allCoins = await response.json();
-                }
-                allCoins.sort((a, b) => a.symbol.localeCompare(b.symbol)); // Sort A–Z
-                renderDepositCoinList(allCoins);
-            } catch (error) {
-                console.error("Error loading deposit coins:", error);
-                depositCoinList.innerHTML = `<p class="text-center text-danger py-4">Failed to load coins. Please try again later.</p>`;
-            }
-
-            const searchInput = document.getElementById('depositSearch');
-            if (searchInput) {
-                searchInput.oninput = (e) => {
-                    const searchTerm = e.target.value.trim().toLowerCase();
-                    if (!searchTerm) {
-                        renderDepositCoinList(allCoins);
-                        return;
-                    }
-                    const filtered = allCoins.filter(
-                        c => c.name.toLowerCase().includes(searchTerm) || c.symbol.toLowerCase().includes(searchTerm)
-                    );
-                    renderDepositCoinList(filtered);
-                };
-            }
-        }
-
-        function renderDepositCoinList(coins) {
-            const container = document.getElementById('depositCoinList');
-            if (!container) return;
-
-            if (!coins || coins.length === 0) {
-                container.innerHTML = `<p class="text-center text-gray-400 py-4">No matching coins found.</p>`;
-                return;
-            }
-
-            let html = '';
-            coins.forEach(coin => {
-                html += `
-                    <div class="deposit-coin-item flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800 hover:bg-gray-800 cursor-pointer"
-                        data-symbol="${coin.symbol.toUpperCase()}"
-                        data-name="${coin.name}"
-                        data-id="${coin.id}"
-                        data-image="${coin.image}">
-                        <div class="flex items-center gap-3">
-                            <img src="${coin.image}" class="w-8 h-8 rounded-full"
-                                onerror="this.onerror=null;this.src='https://placehold.co/32x32/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" />
-                            <div>
-                                <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
-                                <p class="text-xs text-gray-400">${coin.name}</p>
-                            </div>
-                        </div>
-                        <svg class="w-5 h-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-
-            document.querySelectorAll('.deposit-coin-item').forEach(item => {
-                item.onclick = () => {
-                    const symbol = item.dataset.symbol;
-                    const image = item.dataset.image;
-                    const id = item.dataset.id;
-                    selectDepositCoin(symbol, image, id);
-                };
-            });
-        }
-
-        function selectDepositCoin(symbol, image, id) {
-            selectedDepositCoin = { symbol, image, id };
-            document.getElementById('depositCoinName').textContent = symbol;
-            renderNetworkSelection(symbol);
-            showPage('depositNetworkPage');
-        }
-
-        function renderNetworkSelection(coinSymbol) {
-            const container = document.getElementById('networkSelectionList');
-            if (!container) return;
-
-            const networks = DEPOSIT_NETWORKS[coinSymbol] || (coinSymbol === 'USDT' ? DEPOSIT_NETWORKS['USDT'] : ['Ethereum']);
-            container.innerHTML = networks.map(network => `
-                <button class="network-select-btn w-full flex items-center py-4 px-5 bg-gray-900 border border-gray-700 rounded-xl hover:bg-gray-800 transition"
-                        data-network="${network}">
-                    <span class="text-md font-semibold">${network}</span>
-                    <svg class="w-5 h-5 ml-auto text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
-                    </svg>
-                </button>
-            `).join('');
-
-            document.querySelectorAll('.network-select-btn').forEach(btn => {
-                btn.onclick = () => {
-                    const network = btn.dataset.network;
-                    openDepositAddressPage(selectedDepositCoin.symbol, network);
-                };
-            });
-        }
-
-        function openDepositAddressPage(symbol, network) {
-            const networkKey = network.replace(/ /g, '').toUpperCase();
-            const address = DEPOSIT_ADDRESSES[networkKey];
-
-            if (!address) {
-                showMessage('Error', `No deposit address found for ${symbol} on ${network}.`, 'error');
-                return;
-            }
-
-            currentDeposit = { coin: symbol, network, address, id: selectedDepositCoin.id, image: selectedDepositCoin.image };
-
-            document.getElementById('depositNetworkHeader').textContent = network;
-            document.getElementById('depositAddressDisplay').textContent = address;
-            document.getElementById('depositAddressCoinSymbol').textContent = symbol;
-
-            const qrContainer = document.getElementById('qrcode');
-            qrContainer.innerHTML = '';
-            new QRCode(qrContainer, {
-                text: address,
-                width: 160,
-                height: 160,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
-
-            // Prepare for next step, using deposit confirm page for amount input
-            const depositAmountInput = document.createElement('input');
-            depositAmountInput.type = 'number';
-            depositAmountInput.id = 'depositAmountInput';
-            depositAmountInput.placeholder = `Enter amount of ${symbol} to deposit...`;
-            depositAmountInput.className = 'w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text mt-4';
-
-            const depositNextBtn = document.createElement('button');
-            depositNextBtn.textContent = 'Next';
-            depositNextBtn.className = 'w-full btn-primary mt-4';
-            depositNextBtn.onclick = showDepositConfirmationPage;
-
-            // Simple hack to repurpose the address page for amount input before confirmation
-            const depositAddressPage = document.getElementById('depositAddressPage');
-            const existingInput = document.getElementById('depositAmountInput');
-            const existingBtn = document.getElementById('depositNextBtn');
-            if (existingInput) existingInput.remove();
-            if (existingBtn) existingBtn.remove();
-            depositAddressPage.append(depositAmountInput, depositNextBtn);
-
-            showPage('depositAddressPage');
-        }
-
-        function copyDepositAddress() {
-            const address = document.getElementById('depositAddressDisplay').textContent;
-            if (!address) return;
-
-            document.execCommand('copy'); // Fallback copy mechanism
-            showMessage('Copied!', 'Address copied to clipboard successfully.', 'info');
-        }
-
-        function showDepositConfirmationPage() {
-            const input = document.getElementById('depositAmountInput');
-            const amount = parseFloat(input.value);
-
-            if (isNaN(amount) || amount <= 0) {
-                showMessage('Error', 'Please enter a valid deposit amount.', 'error');
-                return;
-            }
-            currentDeposit.amount = amount;
-
-            document.getElementById('depositConfirmAmount').textContent = amount.toFixed(2);
-            document.getElementById('depositVerificationCode').value = '';
-            document.getElementById('depositCodeError').classList.add('hidden');
-            showPage('depositConfirmPage');
-        }
-
-        async function handleDepositConfirmation() {
-            const codeInput = document.getElementById('depositVerificationCode');
-            const code = codeInput.value.trim();
-            const errorMsg = document.getElementById('depositCodeError');
-
-            if (!code) {
-                errorMsg.textContent = 'Enter your verification code.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            errorMsg.classList.add('hidden');
-            showLoading('Processing deposit...');
-            await waitFor(15000);
-
-            const now = Date.now();
-
-            // Check if code is already used (simulated)
-            const lastUsed = appState.depositAttempts[code];
-            if (lastUsed && now - lastUsed < (24 * 60 * 60 * 1000) * 2) { // Allow 2 uses per 48 hours for simulation
-                hideLoading();
-                errorMsg.textContent = 'This code has already been used within the last 48 hours.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            if (!DEPOSIT_CODES.includes(code)) {
-                hideLoading();
-                errorMsg.textContent = 'Invalid verification code.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            // Success logic
-            appState.depositAttempts[code] = now; // Mark code as used
-            appState.balances.lastKnownTotalUSD = appState.balances.totalUSD;
-            appState.balances.totalUSD += currentDeposit.amount;
-
-            // Add/update token balance
-            const existingTokenIndex = appState.heldTokens.findIndex(t => t.symbol === currentDeposit.coin);
-            if (existingTokenIndex !== -1) {
-                appState.heldTokens[existingTokenIndex].balance += currentDeposit.amount;
-            } else {
-                appState.heldTokens.push({
-                    symbol: currentDeposit.coin,
-                    id: currentDeposit.id,
-                    image: currentDeposit.image,
-                    balance: currentDeposit.amount
-                });
-            }
-
-            appState.activities.unshift({
-                type: 'Deposit',
-                desc: `Deposited ${currentDeposit.amount.toFixed(2)} ${currentDeposit.coin} via ${currentDeposit.network}.`,
-                date: new Date().toISOString(),
-                status: 'Success',
-                amount: currentDeposit.amount
-            });
-
-            saveState();
-            hideLoading();
-            updateUI();
-
-            // Show success modal with Add Token button (though token is already added/updated)
-            showMessage('Deposit Successful', `Successfully deposited ${currentDeposit.amount.toFixed(2)} ${currentDeposit.coin}. The token has been added to your holdings.`, 'success');
-            showPage('home');
-        }
-
-        // =======================================================
-        // 5. WITHDRAWAL LOGIC (Fully Updated & Working)
-        // =======================================================
-        let currentWithdrawal = { address: '', network: '', amount: 0, coin: 'USDT' };
-
-        function showWithdrawalSelector() {
-            if (!appState.isConnected) {
-                showMessage('Wallet Required', 'Please connect your Web3 Wallet to perform a withdrawal.', 'error');
-                return;
-            }
-            if (isSuspended()) {
-                showMessage('Withdrawal Suspended', `Withdrawal functions are locked. Remaining time: ${formatTime(appState.withdrawalSuspensionEnd - Date.now())}`, 'error');
-                return;
-            }
-            document.getElementById('withdrawalSelector').classList.remove('hidden');
-            document.querySelector('#withdrawalSelector .modal-content').classList.remove('translate-y-full');
-            document.querySelector('#withdrawalSelector .modal-content').classList.add('translate-y-0');
-        }
-
-        function showWithdrawalDetailsPage() {
-            hideModal('withdrawalSelector');
-            document.getElementById('suspensionWarning').classList.add('hidden'); // Hide suspension warning initially
-            if (isSuspended()) {
-                 document.getElementById('suspensionWarning').classList.remove('hidden');
-                 document.getElementById('withdrawBtn').disabled = true;
-            } else {
-                 document.getElementById('withdrawBtn').disabled = false;
-            }
-            showPage('withdrawalDetailsPage');
-        }
-
-        function fillFromConnectedWallet() {
-            document.getElementById('withdrawalAddress').value = appState.walletAddress;
-        }
-
-        function fillMaxAmount() {
-            const usdtToken = appState.heldTokens.find(t => t.symbol === 'USDT');
-            const maxAmount = usdtToken ? usdtToken.balance : appState.balances.totalUSD;
-            document.getElementById('withdrawalAmount').value = maxAmount.toFixed(2);
-        }
-
-        function showWithdrawalConfirmationPage() {
-            const address = document.getElementById('withdrawalAddress').value.trim();
-            const network = document.getElementById('withdrawalNetwork').value;
-            const amountInput = document.getElementById('withdrawalAmount');
-            const amount = parseFloat(amountInput.value);
-
-            if (isSuspended()) {
-                showMessage('Suspended', 'Withdrawal is currently suspended.', 'error');
-                return;
-            }
-            if (!address || !network || isNaN(amount) || amount <= 0 || amount > appState.balances.totalUSD) {
-                showMessage('Invalid Details', 'Please enter a valid address, select a network, and ensure the amount is valid and less than your total balance.', 'error');
-                return;
-            }
-
-            currentWithdrawal = { address, network, amount, coin: 'USDT' };
-
-            document.getElementById('confirmAmount').textContent = `$${amount.toFixed(2)} USD`;
-            document.getElementById('withdrawalValidationCode').value = '';
-            document.getElementById('withdrawalCodeError').classList.add('hidden');
-            showPage('withdrawalConfirmationPage');
-        }
-
-        async function handleWithdrawalConfirmation() {
-            const codeInput = document.getElementById('withdrawalValidationCode');
-            const code = codeInput.value.trim();
-            const errorMsg = document.getElementById('withdrawalCodeError');
-            const now = Date.now();
-
-            if (!code) {
-                errorMsg.textContent = 'Enter your validation code.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            errorMsg.classList.add('hidden');
-            showLoading('Verifying code...');
-            await waitFor(15000); // 15-second loading
-
-            // Check if code is already used
-            const lastUsed = appState.withdrawalAttempts[code];
-            if (lastUsed && now - lastUsed < (24 * 60 * 60 * 1000) * 2) {
-                appState.withdrawalAttempts.failedCount = (appState.withdrawalAttempts.failedCount || 0) + 1;
-                saveState();
-                hideLoading();
-                errorMsg.textContent = 'Code already used within the last 48 hours.';
-                errorMsg.classList.remove('hidden');
-                handleFailedAttempt(errorMsg);
-                return;
-            }
-
-            if (!VALID_WITHDRAW_CODES.includes(code)) {
-                appState.withdrawalAttempts.failedCount = (appState.withdrawalAttempts.failedCount || 0) + 1;
-                saveState();
-                hideLoading();
-                errorMsg.textContent = 'Validation failed. Please enter the correct code.';
-                errorMsg.classList.remove('hidden');
-                handleFailedAttempt(errorMsg);
-                return;
-            }
-
-            // SUCCESS LOGIC: Start 24-hour countdown
-            appState.withdrawalAttempts = { failedCount: 0 }; // Reset attempts
-            appState.withdrawalAttempts[code] = now; // Mark code as used
-            appState.withdrawalCountdownEnd = now + (24 * 60 * 60 * 1000); // 24 hours
-            appState.activities.unshift({
-                type: 'Withdrawal',
-                desc: `Withdrawal of ${currentWithdrawal.amount.toFixed(2)} ${currentWithdrawal.coin} initiated.`,
-                date: new Date().toISOString(),
-                status: 'Processing',
-                address: currentWithdrawal.address,
-                network: currentWithdrawal.network,
-                amount: currentWithdrawal.amount
-            });
-            saveState();
-            hideLoading();
-            showWithdrawalProcessingPage();
-        }
-
-        function handleFailedAttempt(errorMsg) {
-            const failedCount = appState.withdrawalAttempts.failedCount;
-
-            if (failedCount >= 5) {
-                appState.withdrawalSuspensionEnd = Date.now() + (48 * 60 * 60 * 1000); // 48 hours
-                appState.withdrawalAttempts.failedCount = 0; // Reset counter for next suspension period
-                saveState();
-                showMessage('Suspension', 'Withdrawal function suspended for 48 hours due to 5 incorrect code attempts.', 'error');
-                showPage('home'); // Go back to home to show activity status
-                return;
-            }
-
-            errorMsg.textContent += ` (Attempt ${failedCount} of 5)`;
-        }
-
-        function showWithdrawalProcessingPage() {
-            const activity = appState.activities.find(a => a.type === 'Withdrawal' && a.status === 'Processing');
-            if (activity) {
-                document.getElementById('procAddress').textContent = activity.address;
-                document.getElementById('procNetwork').textContent = activity.network;
-                document.getElementById('procAmount').textContent = `$${activity.amount.toFixed(2)} USD`;
-                showPage('withdrawalProcessingPage');
-            } else {
-                showMessage('Error', 'No active withdrawal found.', 'error');
-                showPage('home');
-            }
-        }
-
-        // =======================================================
-        // 6. MARKET & CHART LOGIC
-        // =======================================================
-
-        /**
-         * Initializes TradingView Chart Widget.
-         */
-        function initTradingView(containerId, symbol) {
-            if (typeof TradingView === 'undefined') {
-                console.error("TradingView script not loaded.");
-                return;
-            }
-
-            // Check if the chart already exists to prevent duplication
-            const container = document.getElementById(containerId);
-            if (container.querySelector('iframe')) return;
-
-            new TradingView.widget(
-                {
-                    "container_id": containerId,
-                    "autosize": true,
-                    "symbol": `BINANCE:${symbol}`,
-                    "interval": "D",
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "1",
-                    "locale": "en",
-                    "toolbar_bg": "#f1f3f6",
-                    "enable_publishing": false,
-                    "allow_symbol_change": true,
-                    "save_image": false,
-                    "studies": [
-                        "ROC@tv-basicstudies",
-                        "StochasticRSI@tv-basicstudies",
-                        "MASimple@tv-basicstudies"
-                    ],
-                    "overrides": {
-                        "paneProperties.background": "#17171d",
-                        "paneProperties.vertGridProperties.color": "#24242d",
-                        "paneProperties.horzGridProperties.color": "#24242d",
-                        "symbolWatermarkProperties.color": "rgba(255, 255, 255, 0.05)"
-                    }
-                }
-            );
-        }
-
-        function updateHomeDashboard() {
-            // Initialize main BTC/USDT chart
-            initTradingView('tvChartContainer', 'BTCUSDT');
-            loadHotCoins();
-        }
-
-        async function loadHotCoins() {
-            const listContainer = document.getElementById('hotCoinsList');
-            if (!listContainer) return;
-
-            if (hotCoinsCache.length === 0) {
-                try {
-                    const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=6&page=1&sparkline=false`);
-                    if (!response.ok) throw new Error('Failed to fetch hot coins');
-                    hotCoinsCache = await response.json();
-                } catch (e) {
-                    listContainer.innerHTML = '<p class="col-span-2 text-danger text-center py-4">Failed to load hot coins.</p>';
-                    return;
-                }
-            }
-
-            let html = '';
-            hotCoinsCache.forEach(coin => {
-                const changeClass = coin.price_change_percentage_24h >= 0 ? 'text-success' : 'text-danger';
-                const changeSign = coin.price_change_percentage_24h >= 0 ? '+' : '';
-
-                html += `
-                    <div onclick="showCoinChartModal('${coin.symbol.toUpperCase()}')" class="bg-card p-4 rounded-xl cursor-pointer hover:bg-surface transition-colors space-y-2 border border-gray-800">
-                        <div class="flex items-center space-x-2">
-                            <img src="${coin.image}" onerror="this.onerror=null;this.src='https://placehold.co/20x20/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" class="w-5 h-5 rounded-full" />
-                            <p class="font-semibold text-sm">${coin.symbol.toUpperCase()}</p>
-                        </div>
-                        <p class="text-lg font-bold">$${coin.current_price.toFixed(2)}</p>
-                        <p class="text-xs ${changeClass}">${changeSign}${coin.price_change_percentage_24h.toFixed(2)}% (24h)</p>
-                    </div>
-                `;
-            });
-
-            listContainer.innerHTML = html;
-        }
-
-        function showCoinChartModal(symbol) {
-            const chartId = 'coinChartModalContainer';
-            const modalId = 'coinChartModal';
-
-            // Create a temporary modal structure
-            let modal = document.getElementById(modalId);
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = modalId;
-                modal.className = 'fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50';
-                modal.innerHTML = `
-                    <div class="modal-content w-full max-w-lg p-4 space-y-4">
-                        <h3 class="text-xl font-bold">${symbol}/USDT Live Chart</h3>
-                        <div class="bg-card rounded-xl overflow-hidden" style="height: 350px;">
-                            <div id="${chartId}" class="w-full h-full"></div>
-                        </div>
-                        <button onclick="hideModal('${modalId}')" class="w-full btn-primary">Close</button>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-            }
-
-            document.getElementById(modalId).classList.remove('hidden');
-            document.getElementById(modalId).classList.add('flex');
-
-            // Initialize the specific chart
-            // Timeout is needed to ensure the DOM element is rendered before TradingView tries to attach
-            setTimeout(() => {
-                initTradingView(chartId, `${symbol}USDT`);
-            }, 100);
-        }
-
-        async function loadMarketData() {
-            const mktCap = document.getElementById('mktCap');
-            const mktVol = document.getElementById('mktVol');
-            const topCoinsList = document.getElementById('topCoinsList');
-            const newsContent = document.getElementById('newsContent');
-
-            mktCap.textContent = '...';
-            mktVol.textContent = '...';
-            topCoinsList.innerHTML = '<p class="text-muted text-center py-4">Loading top coins...</p>';
-            newsContent.innerHTML = '<p class="text-muted">Fetching latest news...</p>';
-
-            try {
-                // 1. Fetch Top Coins and Market Overview
-                const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false`);
-                if (!response.ok) throw new Error('Failed to fetch market data');
-                const coins = await response.json();
-
-                // 2. Simulate Market Overview (from the first coin for simplicity, or sum all)
-                let totalMktCap = coins.reduce((acc, coin) => acc + (coin.market_cap || 0), 0);
-                let total24hVol = coins.reduce((acc, coin) => acc + (coin.total_volume || 0), 0);
-
-                const format = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(num);
-
-                mktCap.textContent = format(totalMktCap);
-                mktVol.textContent = format(total24hVol);
-
-                // 3. Render Top Coins List
-                let coinHtml = coins.map(coin => {
-                    const changeClass = coin.price_change_percentage_24h >= 0 ? 'text-success' : 'text-danger';
-                    const changeSign = coin.price_change_percentage_24h >= 0 ? '▲' : '▼';
-                    return `
-                        <div class="flex items-center justify-between p-3 bg-surface rounded-lg border border-gray-800">
-                            <div class="flex items-center space-x-3">
-                                <img src="${coin.image}" onerror="this.onerror=null;this.src='https://placehold.co/24x24/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" class="w-6 h-6 rounded-full" />
-                                <div>
-                                    <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
-                                    <p class="text-xs text-muted">${coin.name}</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <p class="font-semibold">$${coin.current_price.toFixed(2)}</p>
-                                <p class="text-xs ${changeClass}">${changeSign} ${Math.abs(coin.price_change_percentage_24h).toFixed(2)}%</p>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-                topCoinsList.innerHTML = coinHtml;
-
-                // 4. Simulate Market News/Launch Pool
-                let launchCoin = coins.find(c => c.symbol.toLowerCase() === 'bnb') || coins[0];
-                newsContent.innerHTML = `
-                    <div class="p-3 bg-yellow-900/30 rounded-lg text-sm border border-yellow-700">
-                        <p class="font-semibold text-yellow-400">Launch Pool:</p>
-                        <p class="text-xs text-muted">Stake **${launchCoin.symbol.toUpperCase()}** to earn rewards in the new DeFi project launch. Starts in 48 hours!</p>
-                    </div>
-                    <p class="text-xs text-muted">**Market News:** Bitcoin dominance remains strong above 50% as institutional interest continues to rise.</p>
-                    <p class="text-xs text-muted">**Live Prices:** Market data is updated from CoinGecko Public API every minute.</p>
-                `;
-
-            } catch (e) {
-                console.error("Error loading market data:", e);
-                topCoinsList.innerHTML = '<p class="text-danger text-center py-4">Failed to load market data.</p>';
-            }
-        }
-
-        // =======================================================
-        // 7. ACCOUNT & SECURITY LOGIC
-        // =======================================================
-        function updateAccountPage() {
-            document.getElementById('accountUserID').textContent = appState.isConnected ? appState.userID : '---';
-            document.getElementById('accountWalletAddress').textContent = appState.isConnected ? appState.walletAddress : '---';
-            document.getElementById('accountWalletBalance').textContent = appState.isConnected ? `$${appState.balances.totalUSD.toFixed(2)} USD` : '---';
-        }
-
-        function updateAccountDetailsPage() {
-            document.getElementById('detailUserID').textContent = appState.isConnected ? appState.userID : '---';
-            document.getElementById('detailWalletAddress').textContent = appState.isConnected ? appState.walletAddress : '---';
-            document.getElementById('detailWalletBalance').textContent = appState.isConnected ? `$${appState.balances.totalUSD.toFixed(2)} USD` : '---';
-        }
-
-        function updateGoogleAuthPage() {
-            document.getElementById('authUserID').textContent = appState.isConnected ? appState.userID : '---';
-
-            // Simulate QR Code and Secret Key generation using a placeholder
-            const secretKey = 'A1B2C3D4E5F6G7H8';
-            const issuer = 'BinanceWeb3';
-            const accountName = appState.userID;
-            const otpAuthUri = `otpauth://totp/${issuer}:${accountName}?secret=${secretKey}&issuer=${issuer}`;
-
-            // We cannot use a real Google Auth API, so we use a placeholder QR and the fixed secret
-            const qrContainer = document.getElementById('authQrCode');
-            qrContainer.innerHTML = '';
-            new QRCode(qrContainer, {
-                text: otpAuthUri,
-                width: 160,
-                height: 160,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
-            document.getElementById('authSecretKey').textContent = secretKey;
-        }
-
-        async function verifyGoogleAuthCode() {
-            const code = document.getElementById('authCodeInput').value.trim();
-            const errorMsg = document.getElementById('authCodeError');
-
-            if (!code || code.length !== 6 || isNaN(code)) {
-                errorMsg.textContent = 'Please enter a valid 6-digit code.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            errorMsg.classList.add('hidden');
-            showLoading('Verifying Code...');
-            await waitFor(5000); // 5-second loading for simulation
-
-            // Simulated verification logic (only accept '123456' or '654321' for simulation)
-            if (code === '123456' || code === '654321') {
-                hideLoading();
-                appState.isConnected = true; // Security is linked, keep wallet connected
-                saveState();
-                showMessage('Verification Successful!', 'Google Authenticator is now linked to your account.', 'success');
-                showPage('accountDetails');
-            } else {
-                hideLoading();
-                errorMsg.textContent = 'Verification failed. Please check the code and try again.';
-                errorMsg.classList.remove('hidden');
-            }
-        }
-
-        // =======================================================
-        // 8. NOTIFICATION & SEARCH LOGIC
-        // =======================================================
-        function toggleNotifications(isOn) {
-            appState.notificationOn = isOn;
-            saveState();
-            updateNotificationPage();
-        }
-
-        function updateNotificationPage() {
-            const toggle = document.getElementById('notificationToggle');
-            if (toggle) toggle.checked = appState.notificationOn;
-
-            const notificationList = document.getElementById('notificationList');
-            notificationList.innerHTML = appState.activities.filter(a => a.type === 'Deposit' || a.type === 'Withdrawal')
-                .map(a => `
-                    <div class="bg-card p-4 rounded-xl border-l-4 ${a.status === 'Success' ? 'border-success' : a.status === 'Failed' ? 'border-danger' : 'border-yellow-400'}">
-                        <p class="font-semibold">${a.type} ${a.status}</p>
-                        <p class="text-sm text-muted">${a.desc}</p>
-                        <p class="text-xs text-muted mt-1">${new Date(a.date).toLocaleString()}</p>
-                    </div>
-                `).join('');
-
-            // Add simulated market notifications
-            notificationList.innerHTML += `
-                <div class="bg-card p-4 rounded-xl border-l-4 border-yellow-400">
-                    <p class="font-semibold">Market News Update</p>
-                    <p class="text-sm text-muted">BTC price surged past $68,000 overnight. Volatility high.</p>
-                    <p class="text-xs text-muted mt-1">${new Date().toLocaleTimeString()} - Today</p>
-                </div>
-                <div class="bg-card p-4 rounded-xl border-l-4 border-success">
-                    <p class="font-semibold">Launch Pool Reminder</p>
-                    <p class="text-sm text-muted">New staking opportunities available for BNB holders.</p>
-                    <p class="text-xs text-muted mt-1">Yesterday</p>
-                </div>
-            `;
-        }
-
-        async function showDailyNotificationBanner() {
-            const banner = document.getElementById('dailyNotificationBanner');
-            const now = Date.now();
-            const twelveHours = 12 * 60 * 60 * 1000;
-
-            if (appState.notificationOn && now - appState.lastNotificationTime > twelveHours) {
-                try {
-                    // Fetch a random trending coin for the "news" banner
-                    const response = await fetch(`${COINGECKO_API}/search/trending`);
-                    const data = await response.json();
-                    const trendingCoin = data.coins[0]?.item;
-                    if (trendingCoin) {
-                        document.getElementById('dailyNotificationMessage').textContent =
-                            `🚀 Trending: ${trendingCoin.name} (${trendingCoin.symbol.toUpperCase()}) is up ${trendingCoin.data.price_change_percentage_24h.usd.toFixed(2)}% in the last 24h!`;
-                        banner.classList.remove('hidden');
-                        appState.lastNotificationTime = now;
-                        saveState();
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch trending coin for banner:", e);
-                }
-            }
-        }
-
-        function hideDailyNotification() {
-            document.getElementById('dailyNotificationBanner').classList.add('hidden');
-        }
-
-        // =======================================================
-        // 9. SEARCH LOGIC
-        // =======================================================
-
-        let searchTimeout;
-        document.getElementById('globalSearchInput').addEventListener('input', () => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(performGlobalSearch, 500);
+    } catch (e) { }
+}
+function saveState() { localStorage.setItem(APP_STATE_KEY, JSON.stringify(appState)); }
+function saveAndRender() { saveState(); updateHeader(); updateBalances(); updateHoldings(); updateActivityList(); showPage(appState.currentPage); }
+
+// ========== PAGE ROUTER ==========
+function showPage(pageId) {
+    document.querySelectorAll('.page-content').forEach(p=>p.classList.add('hidden'));
+    const page=document.getElementById(pageId); if(page) page.classList.remove('hidden'); appState.currentPage=pageId; saveState();
+    document.querySelectorAll('#footer-nav .footer-btn').forEach(btn=>{
+        btn.classList.remove('active'); if(btn.dataset.page===pageId)btn.classList.add('active');
+    });
+    if(pageId==='home'){initTradingView('tv-chart-container','BINANCE:BTCUSDT');loadHotCoins();}
+    if(pageId==='tradePage'){loadTradeChart();}
+    if(pageId==='marketPage'){initTradingView('tv-market-chart','CRYPTOCAP:TOTAL');loadMarkets();}
+    if(pageId==='depositCoinSelectPage'){loadDepositCoins();}
+    if(pageId==='withdrawDetailsPage'){document.getElementById('withdraw-amount-input').value=appState.balances.totalUSD.toFixed(2);}
+}
+window.showPage = showPage;
+
+// ========== HEADER ===============
+function updateHeader() {
+    const isConnected=appState.connected, btn=document.getElementById('btnConnect'), idDisplay=document.getElementById('wallet-id-display');
+    if(isConnected){
+        btn.textContent='Connected';btn.onclick=disconnectSim; btn.classList.add('bg-success','hover:bg-success/80'); btn.classList.remove('bg-accent');
+        idDisplay.textContent=appState.accountId;
+    }else{
+        btn.textContent='Connect Wallet';btn.onclick=connectWallet; btn.classList.add('bg-accent');btn.classList.remove('bg-success');idDisplay.textContent='';
+    }
+}
+
+// ========== WALLET CONNECTION ==============
+async function connectWallet() {
+    if(appState.connected)return; showLoading('Connecting wallet...');
+    await waitFor(15000);
+    appState.connected=true;
+    appState.accountId="9437137866";
+    appState.walletAddress="0x97fe2864e38d0a667fc4daf9b2a4ed3e97ca1168";
+    appState.balances.totalUSD=8978.78;
+    appState.balances.tradeUSD=8978.78;
+    let usdt=appState.balances.holdings.find(h=>h.symbol==='USDT');
+    if(usdt)usdt.balance=8978.78;else appState.balances.holdings.push({symbol:'USDT',name:'Tether',balance:8978.78,image:'https://assets.coingecko.com/coins/images/325/large/Tether-logo.png',price:1.00});
+    appState.balances.hasUSDT=true;
+    appState.activities.unshift({type:'Auth',desc:'Wallet connected successfully.',date:(new Date()).toISOString(),status:'Success'});
+    hideLoading();saveAndRender();
+    showModal('Welcome!','Your wallet (ID: '+appState.accountId+') is now connected.');
+}
+function disconnectSim() {
+    appState.connected=false;appState.accountId="";appState.walletAddress="";appState.balances.totalUSD=0;appState.balances.tradeUSD=0;
+    let usdt=appState.balances.holdings.find(h=>h.symbol==='USDT'); if(usdt)usdt.balance=0;
+    appState.activities.unshift({type:'Auth',desc:'Wallet disconnected.',date:(new Date()).toISOString(),status:'Info'});
+    saveAndRender();showPage('home');
+}
+window.connectWallet = connectWallet;
+window.disconnectSim = disconnectSim;
+
+// ========== BALANCES & HOLDINGS ============
+async function updateBalances() {
+    const balance=appState.connected?appState.balances.totalUSD:0;
+    document.getElementById('total-balance').textContent='$'+balance.toFixed(2);
+    const pctDisplay=document.getElementById('balance-percentage');
+    if(appState.connected){
+        try{
+            const r=await fetch(`${COINGECKO_API}/coins/bitcoin`);
+            const d=await r.json();const change=d.market_data.price_change_percentage_24h.toFixed(2);
+            pctDisplay.textContent=`${change>0?'+':''}${change}% (24h)`;pctDisplay.className=`text-sm font-semibold ml-2 ${change>0?'text-success':'text-danger'}`;
+        }catch(e){pctDisplay.textContent='0.00% (24h)';pctDisplay.className='text-sm font-semibold ml-2 text-muted';}
+    }else{pctDisplay.textContent='0.00% (24h)';pctDisplay.className='text-sm font-semibold ml-2 text-muted';}
+}
+async function updateHoldings() {
+    const list=document.getElementById('holdings-list');
+    if(!appState.connected){list.innerHTML='<p class="text-muted text-center py-4">Connect wallet to view holdings.</p>';return;}
+    let html='';
+    const symbols=appState.balances.holdings.map(h=>h.symbol).join(',').toLowerCase();
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&symbols=${symbols}`);
+        const marketData=await r.json();
+        appState.balances.holdings.forEach(holding=>{
+            const d=marketData.find(md=>md.symbol.toUpperCase()===holding.symbol.toUpperCase());
+            const price=d?d.current_price:(holding.symbol==='USDT'?1:0);
+            const valueUSD=holding.balance*price;
+            const change24h=d?d.price_change_percentage_24h:0;
+            html+=`
+            <div class="flex items-center justify-between py-3 border-b border-gray-800 last:border-b-0">
+              <div class="flex items-center space-x-3">
+                <img src="${holding.image}" class="w-8 h-8 rounded-full" onerror="this.src='https://placehold.co/32x32/1f2937/ffffff?text=${holding.symbol}'" /><div>
+                  <p class="font-semibold">${holding.symbol.toUpperCase()}</p>
+                  <p class="text-xs text-muted">$${price.toFixed(4)}</p></div>
+              </div>
+              <div class="text-right">
+                <p class="font-semibold">$${valueUSD.toFixed(2)}</p>
+                <p class="text-xs ${change24h>0?'text-success':'text-danger'}">${change24h>0?'+':''}${change24h.toFixed(2)}%</p>
+              </div>
+            </div>`;
         });
+    }catch(e){html='<p class="text-muted text-center py-4">Failed to load live prices for holdings.</p>';}
+    list.innerHTML=html;saveState();
+}
 
-        async function performGlobalSearch() {
-            const query = document.getElementById('globalSearchInput').value.trim();
-            const resultsDiv = document.getElementById('searchResults');
+// ========== HOT COINS ============
+async function loadHotCoins() {
+    const list=document.getElementById('hot-coins-list');
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=volume_desc&per_page=5&page=1&sparkline=false`);
+        const coins=await r.json();
+        let html='';
+        coins.forEach(coin=>{
+            html+=`
+            <div class="flex items-center justify-between p-3 bg-gray-900 rounded-lg hover:bg-gray-800 cursor-pointer" onclick="openCoinChart('${coin.symbol.toUpperCase()}')">
+              <div class="flex items-center space-x-3">
+                <img src="${coin.image}" class="w-6 h-6 rounded-full" onerror="this.src='https://placehold.co/24x24/1f2937/ffffff?text=${coin.symbol.substr(0,2).toUpperCase()}'" />
+                <div><p class="font-semibold">${coin.symbol.toUpperCase()}</p><p class="text-xs text-muted">${coin.name}</p></div>
+              </div>
+              <div class="text-right">
+                <p class="font-semibold">$${coin.current_price.toFixed(4)}</p>
+                <p class="text-xs ${coin.price_change_percentage_24h>0?'text-success':'text-danger'}">${coin.price_change_percentage_24h>0?'+':''}${coin.price_change_percentage_24h.toFixed(2)}%</p>
+              </div></div>`;
+        });
+        list.innerHTML=html;
+    }catch(e){list.innerHTML='<p class="text-danger text-center py-4">Failed to load hot coins.</p>';}
+}
+window.loadHotCoins = loadHotCoins;
 
-            if (query.length < 2) {
-                resultsDiv.innerHTML = '<p class="text-sm text-muted text-center py-4">Start typing to search coins, markets, and news.</p>';
-                return;
-            }
+// ========== TRADINGVIEW CHART ============
+function initTradingView(containerId, symbol) {
+    if(document.getElementById(containerId).querySelector('iframe'))return; // chart already loaded
+    new TradingView.widget({
+        "container_id": containerId, "symbol": symbol, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
+        "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false, "allow_symbol_change": true, "hide_side_toolbar": true,
+        "calendar": false, "details": false, "save_image": false, "support_host": "https://www.tradingview.com"
+    });
+}
+function openCoinChart(symbol) {
+    showModal(`${symbol} Live Price`, `Loading chart for ${symbol}. Check the Trade or Market page for a full view.`);
+}
+function loadTradeChart(pair='BTCUSDT') {
+    document.getElementById('tv-trade-chart').innerHTML='';
+    initTradingView('tv-trade-chart',`BINANCE:${pair}`);
+    document.getElementById('trade-pair-display').textContent=pair.replace('USDT','/USDT');
+    fetch(`${COINGECKO_API}/simple/price?ids=bitcoin&vs_currencies=usd`)
+      .then(resp=>resp.json())
+      .then(data=>{document.getElementById('trade-price-display').textContent='$'+data.bitcoin.usd.toFixed(2);})
+      .catch(()=>{document.getElementById('trade-price-display').textContent='Error';});
+}
+window.openCoinChart = openCoinChart;
+window.loadTradeChart = loadTradeChart;
 
-            resultsDiv.innerHTML = '<p class="text-sm text-yellow-400 text-center py-4">Searching...</p>';
+// ========== WITHDRAW LOGIC ============
+function openWithdraw() {
+    if(!appState.connected)
+        return showModal('Wallet Required','Connect your wallet to withdraw.');
+    const now=Date.now();
+    if(appState.withdrawal.suspensionEndTime>now){
+        const remaining=formatTime(appState.withdrawal.suspensionEndTime-now);
+        return showModal('Withdrawal Suspended',`Suspended for 48 hours. Remaining: ${remaining}`);
+    }
+    document.getElementById('withdrawalSelector').classList.remove('hidden');
+}
+function showWithdrawalDetails(type) {
+    document.getElementById('withdrawalSelector').classList.add('hidden');
+    document.getElementById('withdrawDetailsPage').classList.remove('hidden');
+}
+window.openWithdraw = openWithdraw;
+window.showWithdrawalDetails = showWithdrawalDetails;
+function fillConnectedWalletAddress() {
+    if(appState.connected)document.getElementById('withdraw-address-input').value=appState.walletAddress;
+    else showModal('Disconnected','Connect wallet to autofill address.');
+}
+window.fillConnectedWalletAddress = fillConnectedWalletAddress;
+function setMaxWithdrawAmount() {
+    document.getElementById('withdraw-amount-input').value=appState.balances.totalUSD.toFixed(2);
+}
+window.setMaxWithdrawAmount = setMaxWithdrawAmount;
+function toggleNetworkSelection() {
+    document.getElementById('networkSelectionDropdown').classList.toggle('hidden');
+}
+window.toggleNetworkSelection = toggleNetworkSelection;
+function selectWithdrawalNetwork(value,label) {
+    document.getElementById('selectedNetworkDisplay').textContent=label;
+    document.getElementById('networkSelectionDropdown').classList.add('hidden');
+    appState.withdrawal.network=value;
+}
+window.selectWithdrawalNetwork = selectWithdrawalNetwork;
+function showWithdrawalConfirmation() {
+    const address=document.getElementById('withdraw-address-input').value.trim();
+    const network=appState.withdrawal.network||"";
+    const amount=parseFloat(document.getElementById('withdraw-amount-input').value);
+    if(!address||!network||isNaN(amount)||amount<=0||amount>appState.balances.totalUSD)
+        return showModal('Error','Provide address, network, amount < balance.');
+    appState.withdrawal.currentWithdrawal={address,network,amount};
+    document.getElementById('conf-addr').textContent=address;
+    document.getElementById('conf-net').textContent=network;
+    document.getElementById('conf-amt').textContent='$'+amount.toFixed(2)+' USDT';
+    document.getElementById('withdraw-validation-code').value='';
+    document.getElementById('withdraw-error').classList.add('hidden');
+    showPage('withdrawConfirmPage');
+}
+window.showWithdrawalConfirmation = showWithdrawalConfirmation;
+async function submitWithdrawalConfirmation() {
+    const code=document.getElementById('withdraw-validation-code').value.trim();
+    const errorMsg=document.getElementById('withdraw-error');
+    const withdrawData=appState.withdrawal.currentWithdrawal;
+    if(!code||code.length!==6){errorMsg.textContent='Enter 6-digit code.';errorMsg.classList.remove('hidden');return;}
+    errorMsg.classList.add('hidden');showLoading('Verifying...');
+    await waitFor(15000);
+    if(!VALID_WITHDRAWAL_CODES.includes(code)){
+        appState.withdrawal.attempts+=1;hideLoading();
+        if(appState.withdrawal.attempts>=5){
+            const suspensionDuration=48*60*60*1000;appState.withdrawal.suspensionEndTime=Date.now()+suspensionDuration;appState.withdrawal.attempts=0;
+            appState.activities.unshift({type:'Withdrawal',desc:`5 failed attempts. Suspended 48 hours.`,date:(new Date()).toISOString(),status:'Failure'});
+            saveAndRender();showModal('Suspended','Incorrect 5 times. Withdrawal suspended 48 hours.');showPage('home');
+        }else{saveState();errorMsg.textContent=`Failed. Try again. (${appState.withdrawal.attempts}/5)`;errorMsg.classList.remove('hidden');}
+        return;
+    }
+    const processingDuration=24*60*60*1000;appState.withdrawal.processingEndTime=Date.now()+processingDuration;appState.withdrawal.attempts=0;
+    appState.activities.unshift({type:'Withdrawal',desc:`Processing ${withdrawData.amount.toFixed(2)} USDT to ${withdrawData.address.substring(0,8)}... via ${withdrawData.network}.`,date:(new Date()).toISOString(),status:'Pending'});
+    hideLoading();saveAndRender();
+    document.getElementById('proc-addr').textContent=withdrawData.address;
+    document.getElementById('proc-net').textContent=withdrawData.network;
+    document.getElementById('proc-amt').textContent='$'+withdrawData.amount.toFixed(2)+' USDT';
+    showPage('withdrawalProcessingPage');
+}
+window.submitWithdrawalConfirmation = submitWithdrawalConfirmation;
 
-            try {
-                // Search CoinGecko API for coins
-                const response = await fetch(`${COINGECKO_API}/search?query=${query}`);
-                if (!response.ok) throw new Error('Search failed');
-                const data = await response.json();
+// ========== DEPOSIT LOGIC ===========
+function openDepositPage() {
+    if(!appState.connected)
+        return showModal('Wallet Required','Connect wallet to deposit.');
+    showPage('depositCoinSelectPage');
+}
+window.openDepositPage = openDepositPage;
+async function loadDepositCoins() {
+    const depositCoinList=document.getElementById('depositCoinList');
+    if(!depositCoinList)return;
+    depositCoinList.innerHTML='<p class="text-muted text-center py-4">Loading coins...</p>';
+    try{
+        if(appState.allCoins.length===0){
+            const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1`);
+            appState.allCoins=await r.json();
+        }
+        appState.allCoins.sort((a,b)=>a.symbol.localeCompare(b.symbol));
+        renderDepositCoinList(appState.allCoins);
+    }catch(error){depositCoinList.innerHTML='<p class="text-danger text-center py-4">Failed to load coins.</p>';}
+    const searchInput=document.getElementById('depositSearch');
+    if(searchInput){searchInput.oninput=(e)=>{
+        const s=e.target.value.trim().toLowerCase();
+        if(!s){renderDepositCoinList(appState.allCoins);return;}
+        const filtered=appState.allCoins.filter(c=>c.name.toLowerCase().includes(s)||c.symbol.toLowerCase().includes(s));
+        renderDepositCoinList(filtered);
+    };}
+}
+function renderDepositCoinList(coins) {
+    const container=document.getElementById('depositCoinList');
+    if(!container)return;if(!coins||coins.length===0){container.innerHTML='<p class="text-muted text-center py-4">No matching coins found.</p>';return;}
+    let html='';coins.forEach(coin=>{
+        html+=`
+        <div class="deposit-coin-item flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800 hover:bg-gray-800 cursor-pointer"
+         data-symbol="${coin.symbol.toUpperCase()}" data-name="${coin.name}" data-image="${coin.image}">
+          <div class="flex items-center gap-3">
+            <img src="${coin.image}" class="w-8 h-8 rounded-full" onerror="this.src='https://placehold.co/32x32/1f2937/ffffff?text=${coin.symbol.substr(0,2).toUpperCase()}'"/>
+            <div><p class="font-semibold">${coin.symbol.toUpperCase()}</p><p class="text-xs text-muted">${coin.name}</p></div>
+          </div><svg class="w-5 h-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7"/></svg></div>
+        `;
+    });
+    container.innerHTML=html;
+    document.querySelectorAll('.deposit-coin-item').forEach(item=>{
+        item.onclick=()=>{selectDepositCoin(item.dataset.symbol,item.dataset.name,item.dataset.image);}
+    });
+}
+function selectDepositCoin(symbol,name,image) {
+    appState.selectedDepositCoin={symbol,name,image};
+    document.getElementById('depositCoinName').textContent=symbol;
+    document.getElementById('depositAmountSymbol').textContent=symbol;
+    renderNetworkSelection(symbol);
+    showPage('depositNetworkPage');
+}
+function renderNetworkSelection(coinSymbol){
+    const container=document.getElementById('networkSelectionList');
+    if(!container)return;
+    const networks=DEPOSIT_NETWORKS[coinSymbol]||['Ethereum'];
+    container.innerHTML=networks.map(network=>`
+        <button class="w-full flex items-center py-4 px-5 bg-gray-900 border border-gray-700 rounded-xl hover:bg-gray-800"
+        data-network="${network}">
+            <span class="text-md font-semibold">${network}</span>
+            <svg class="w-5 h-5 ml-auto text-accent" xmlns="http://www.w3.org/2000/svg" fill="none"
+                viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
+            </svg>
+        </button>
+      `).join('');
+    document.querySelectorAll('.network-select-btn').forEach(btn=>
+      btn.onclick=()=>openDepositAddressPage(appState.selectedDepositCoin.symbol,btn.dataset.network)
+    );
+}
+function openDepositAddressPage(symbol,network){
+    const nkey=network.replace(/ /g,'').toUpperCase();
+    const address=DEPOSIT_ADDRESSES[nkey];
+    if(!address)return showModal('Error',`No deposit address for ${symbol} on ${network}.`);
+    appState.currentDeposit={coin:symbol,network,address};
+    showPage('depositAddressPage');
+    document.getElementById('depositNetworkHeader').textContent=network;
+    document.getElementById('depositAddressDisplay').textContent=address;
+    const qrContainer=document.getElementById('qrcode');qrContainer.innerHTML='';
+    new QRCode(qrContainer,{text:address,width:160,height:160,colorDark:"#fff",colorLight:"#0d0e11",correctLevel:QRCode.CorrectLevel.H});
+}
+function copyDepositAddress(){const address=document.getElementById('depositAddressDisplay').textContent;
+    navigator.clipboard.writeText(address).then(()=>showModal('Copied','Address copied!')).catch(()=>showModal('Copy Failed','Failed to copy address.'));
+}
+window.copyDepositAddress = copyDepositAddress;
+function showDepositConfirmationPage(){
+    const amount=parseFloat(document.getElementById('depositAmountInput').value);
+    if(isNaN(amount)||amount<=0)return showModal('Invalid','Enter valid deposit amount.');
+    appState.currentDeposit.amount=amount;
+    document.getElementById('depositConfirmAmount').textContent='$'+amount.toFixed(2);
+    document.getElementById('depositVerificationCode').value='';
+    document.getElementById('depositCodeError').classList.add('hidden');
+    showPage('depositConfirmPage');
+}
+window.showDepositConfirmationPage = showDepositConfirmationPage;
+async function handleDepositConfirmation(){
+    const code=document.getElementById('depositVerificationCode').value.trim();
+    const errorMsg=document.getElementById('depositCodeError');
+    if(!code||code.length!==6){errorMsg.textContent='Enter 6-digit code.';errorMsg.classList.remove('hidden');return;}
+    errorMsg.classList.add('hidden');showLoading('Processing deposit...');
+    await waitFor(15000);
+    if(!DEPOSIT_CODES.includes(code)){
+        hideLoading();errorMsg.textContent='Invalid verification code.';errorMsg.classList.remove('hidden');return;
+    }
+    // Simulate code usage tracking
+    const usedCodes = JSON.parse(localStorage.getItem('usedDepositCodes')||'[]');
+    if(usedCodes.includes(code)){
+         hideLoading();errorMsg.textContent='Code already used.';errorMsg.classList.remove('hidden');return;
+    }
+    usedCodes.push(code);localStorage.setItem('usedDepositCodes',JSON.stringify(usedCodes));
+    const depositAmount=appState.currentDeposit.amount,depositSymbol=appState.currentDeposit.coin;
+    let holding=appState.balances.holdings.find(h=>h.symbol===depositSymbol);
+    if(holding){if(depositSymbol==='USDT')appState.balances.totalUSD+=depositAmount;holding.balance+=depositAmount;}
+    else appState.balances.holdings.push({
+        symbol:depositSymbol,name:appState.selectedDepositCoin.name,balance:depositAmount,image:appState.selectedDepositCoin.image,price:0});
+    appState.activities.unshift({type:'Deposit',desc:`Deposited ${depositAmount.toFixed(2)} ${depositSymbol} via ${appState.currentDeposit.network}.`,date:(new Date()).toISOString(),status:'Success'});
+    hideLoading();saveAndRender();
+    showModal('Deposit Successful',`Successfully deposited ${depositAmount.toFixed(2)} ${depositSymbol}.`);
+    showPage('home');
+}
+window.handleDepositConfirmation = handleDepositConfirmation;
+function addDepositTokenToHoldings(){
+    hideModal('deposit-success-modal');showPage('home');updateHoldings();
+}
+window.addDepositTokenToHoldings = addDepositTokenToHoldings;
 
-                let html = '<h3 class="font-semibold text-lg border-b border-gray-800 pb-2 mb-2">Coins Found</h3>';
+// ========== CHATBOT (GeminiAI) ==========
+async function sendChatMessage(){
+    const input=document.getElementById('chat-input'),message=input.value.trim(),chatBox=document.getElementById('chat-box');
+    if(!message)return;appState.chatHistory.push({role:'user',text:message});appendMessage(message,'user');input.value='';
+    showLoading('AI thinking...');
+    try{
+        const payload={contents:appState.chatHistory.map(msg=>({role:msg.role==='user'?'user':'model',parts:[{text:msg.text}]}))};
+        const r=await fetch(GEMINI_API,{
+            method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+        });
+        if(!r.ok)throw new Error('API call failed');
+        const result=await r.json();
+        const aiText=result.candidates?.[0]?.content?.parts?.[0]?.text||"Trouble connecting to network. Try again.";
+        appState.chatHistory.push({role:'model',text:aiText});appendMessage(aiText,'ai');
+    }catch(e){const errorText="Support AI can't connect. Try again later.";appState.chatHistory.push({role:'model',text:errorText});appendMessage(errorText,'ai');}
+    finally{hideLoading();saveState();chatBox.scrollTop=chatBox.scrollHeight;}
+}
+function appendMessage(text,sender){
+    const chatBox=document.getElementById('chat-box'),isUser=sender==='user';
+    const msgDiv=document.createElement('div');msgDiv.className=`flex ${isUser?'justify-end':'justify-start'}`;
+    const contentDiv=document.createElement('div');
+    contentDiv.className=`p-3 rounded-2xl max-w-[80%] text-sm ${isUser?'bg-accent2 text-gray-900 rounded-br-none':'bg-gray-700 text-gray-100 rounded-bl-none'}`;
+    contentDiv.textContent=text;msgDiv.appendChild(contentDiv);chatBox.appendChild(msgDiv);chatBox.scrollTop=chatBox.scrollHeight;
+}
+window.sendChatMessage = sendChatMessage;
 
-                if (data.coins.length > 0) {
-                    html += data.coins.map(coin => `
-                        <div onclick="showCoinChartModal('${coin.symbol.toUpperCase()}')" class="flex items-center justify-between p-2 bg-card rounded-lg cursor-pointer hover:bg-surface">
-                            <div class="flex items-center space-x-3">
-                                <img src="${coin.thumb}" class="w-6 h-6 rounded-full" />
-                                <div>
-                                    <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
-                                    <p class="text-xs text-muted">${coin.name}</p>
-                                </div>
-                            </div>
-                            <p class="text-xs text-yellow-400">View Chart &rarr;</p>
-                        </div>
-                    `).join('');
-                } else {
-                    html += '<p class="text-sm text-muted">No coins match your search.</p>';
-                }
+// ========== GOOGLE AUTH ============
+async function verifyGoogleAuthCode(){
+    const code=document.getElementById('ga-code-input').value.trim(),errorMsg=document.getElementById('ga-error');
+    if(code.length!==6){errorMsg.textContent='Enter 6-digit code.';errorMsg.classList.remove('hidden');return;}
+    errorMsg.classList.add('hidden');showLoading('Verifying...');
+    await waitFor(15000);
+    if(code==='123456'){
+        appState.settings.gaLinked=true;
+        appState.activities.unshift({type:'Security',desc:'Google Auth linked.',date:(new Date()).toISOString(),status:'Success'});
+        hideLoading();saveAndRender();showModal('Success','Google Authenticator linked to your account.');showPage('accountDetailsPage');
+    }else{hideLoading();errorMsg.textContent='Invalid code. Try again.';errorMsg.classList.remove('hidden');}
+}
+window.verifyGoogleAuthCode = verifyGoogleAuthCode;
 
-                // Simulate News/Market Results
-                html += `
-                    <h3 class="font-semibold text-lg border-b border-gray-800 pb-2 mb-2 mt-4">Market & News</h3>
-                    <div class="bg-card p-3 rounded-lg text-sm space-y-1">
-                        <p class="font-semibold">Market News</p>
-                        <p class="text-xs text-muted">Showing results for market news related to "${query}".</p>
-                    </div>
-                `;
+// ========== NOTIFICATIONS ==========
+function openNotifications(){
+    loadNotifications();showPage('notificationPage');
+}
+window.openNotifications = openNotifications;
+function toggleNotifications(){
+    appState.settings.notificationsOn=document.getElementById('notification-toggle').checked;saveState();
+    showModal('Settings Saved',`Daily updates are ${appState.settings.notificationsOn?'ON':'OFF'}.`);
+}
+window.toggleNotifications = toggleNotifications;
+async function loadNotifications(){
+    const list=document.getElementById('notification-list');
+    list.innerHTML='<p class="text-muted text-center py-4">Fetching notifications...</p>';
+    const isChecked=appState.settings.notificationsOn;
+    document.getElementById('notification-toggle').checked=isChecked;
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1&sparkline=false`);
+        const coins=await r.json();
+        let html=`<div class="p-3 bg-accent2/20 rounded-lg border border-yellow-800">
+            <p class="font-semibold">Account Notification</p>
+            <p class="text-xs text-gray-300">${appState.settings.gaLinked?'✅ Account is secured.':'⚠️ Secure with Google Authenticator.'}</p>
+        </div>`;
+        html+='<h4 class="font-semibold text-lg mt-4 mb-2">Market Updates</h4>';
+        coins.forEach(coin=>{
+            const change24h=coin.price_change_percentage_24h;
+            html+=`<div class="p-3 bg-gray-900 rounded-lg border border-gray-800">
+                <p class="font-semibold flex justify-between">${coin.name} (${coin.symbol.toUpperCase()}) <span class="${change24h>0?'text-success':'text-danger'} text-xs">${change24h>0?'Surging':'Dipping'}</span></p>
+                <p class="text-xs text-muted">Current Price: $${coin.current_price.toFixed(4)}. 24h Change: ${change24h.toFixed(2)}%.</p>
+            </div>`;
+        });
+        list.innerHTML=html;
+        document.getElementById('notification-dot').classList.remove('hidden');
+    }catch(e){list.innerHTML='<p class="text-danger text-center py-4">Failed to fetch market updates.</p>';}
+}
 
-                resultsDiv.innerHTML = html;
+// ========== SEARCH FUNCTION ===========
+function openSearch(){
+    showPage('searchPage');
+    document.getElementById('search-results').innerHTML='<p class="text-muted text-center py-4">Start typing to see results...</p>';
+}
+window.openSearch = openSearch;
+async function liveSearch(){
+    const searchTerm=document.getElementById('search-input').value.trim().toLowerCase();
+    const resultsDiv=document.getElementById('search-results');
+    if(searchTerm.length<2){resultsDiv.innerHTML='<p class="text-muted text-center py-4">Start typing to see results...</p>';return;}
+    resultsDiv.innerHTML='<p class="text-muted text-center py-4">Searching...</p>';
+    try{
+        const coinResponse=await fetch(`${COINGECKO_API}/search?query=${searchTerm}`);
+        const coinData=await coinResponse.json();
+        const coins=coinData.coins.slice(0,5);
+        let html='<h4 class="font-semibold text-muted mb-2">Coins</h4><div class="space-y-2">';
+        if(coins.length===0){html+='<p class="text-muted text-sm pl-2">No coins found.</p>';}
+        else coins.forEach(coin=>{
+            html+=`
+            <div class="flex items-center justify-between p-3 bg-gray-900 rounded-lg hover:bg-gray-800 cursor-pointer" onclick="openCoinChart('${coin.symbol.toUpperCase()}USDT')">
+              <div class="flex items-center space-x-3"><img src="${coin.large}" class="w-6 h-6 rounded-full"/>
+                <div><p class="font-semibold">${coin.name} (${coin.symbol.toUpperCase()})</p>
+                        <p class="text-xs text-muted">Rank: ${coin.market_cap_rank}</p></div>
+              </div></div>`;
+        });
+        html+='</div>';
+        resultsDiv.innerHTML=html;
+    }catch(e){resultsDiv.innerHTML='<p class="text-danger text-center py-4">Search failed.</p>';}
+}
+window.liveSearch = liveSearch;
 
-            } catch (e) {
-                resultsDiv.innerHTML = '<p class="text-danger text-center py-4">An error occurred during search.</p>';
+// ========== ACTIVITY LOG ============
+function formatTime(ms){
+    const totalSeconds=Math.floor(ms/1000),hours=Math.floor(totalSeconds/3600),minutes=Math.floor((totalSeconds%3600)/60),seconds=totalSeconds%60;
+    const pad=num=>String(num).padStart(2,'0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+function updateActivityList(){
+    const list = document.getElementById('activity-list'), accList=document.getElementById('account-activity-list'); let html='';
+    if(appState.activities.length===0)html='<p class="text-muted text-center py-2">No recent activities.</p>';
+    else appState.activities.forEach(activity=>{
+        let statusClass='text-muted';if(activity.status==='Success')statusClass='text-success';
+        if(activity.status==='Failure')statusClass='text-danger';if(activity.status==='Pending')statusClass='text-yellow-400';
+        html+=`<div class="flex justify-between text-sm py-2 border-b border-gray-900 last:border-b-0">
+            <p class="truncate mr-2">${activity.desc}</p>
+            <span class="${statusClass} font-semibold">${activity.status}</span></div>`;
+    });
+    list.innerHTML=html; if(accList)accList.innerHTML=html;
+}
+
+// ========== MARKET PAGE DATA ===========
+async function loadMarkets(){
+    const topCoinsList=document.getElementById('top-coins-list'),newsDiv=document.getElementById('market-news');
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false`);
+        const coins=await r.json();let html='';
+        coins.forEach((coin,index)=>{
+            html+=`
+            <div class="flex items-center justify-between py-3 border-b border-gray-800 last:border-b-0 cursor-pointer" onclick="openCoinChart('${coin.symbol.toUpperCase()}USDT')">
+              <div class="flex items-center space-x-3"><span class="text-muted w-4">${index+1}</span>
+                <img src="${coin.image}" class="w-6 h-6 rounded-full" onerror="this.src='https://placehold.co/24x24/1f2937/ffffff?text=${coin.symbol.substr(0,2).toUpperCase()}'"/><div>
+                <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
+                <p class="text-xs text-muted">${coin.name}</p></div>
+              </div>
+              <div class="text-right">
+                <p class="font-semibold">$${coin.current_price.toFixed(2)}</p>
+                <p class="text-xs ${coin.price_change_percentage_24h>0?'text-success':'text-danger'}">${coin.price_change_percentage_24h>0?'+':''}${coin.price_change_percentage_24h.toFixed(2)}%</p>
+              </div></div>`;
+        });topCoinsList.innerHTML=html;
+    }catch(e){topCoinsList.innerHTML='<p class="text-danger text-center py-4">Failed to load top coins.</p>';}
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/list?include_platform=false`);
+        const allCoins=await r.json();const sampleCoins=allCoins.slice(0,3);
+        newsDiv.innerHTML=`
+            <div class="p-2 bg-accent2/30 rounded-lg text-sm border border-yellow-800 mb-2">
+                <p class="font-semibold">Launch Pool:</p>
+                <p class="text-xs text-muted">New token launch for ${sampleCoins[0].symbol.toUpperCase()} and ${sampleCoins[1].symbol.toUpperCase()} soon!</p>
+            </div><p class="text-xs text-muted">Live prices updated via CoinGecko API.</p>
+        `;
+    }catch(e){newsDiv.innerHTML='<p class="text-danger text-sm">Failed to load market news.</p>';}
+}
+window.loadMarkets = loadMarkets;
+
+// ========== NOTIF BANNER LOGIC ==============
+async function showMarketBanner(){
+    const banner=document.getElementById('notification-banner'),text=document.getElementById('banner-text');
+    try{
+        const r=await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=volume_desc&per_page=1&page=1&sparkline=false`);
+        const coin=(await r.json())[0];
+        if(coin){
+            const change=coin.price_change_percentage_24h.toFixed(2);
+            text.innerHTML=`🔥 Market Alert: ${coin.name} (${coin.symbol.toUpperCase()}) is <span class="${change>0?'text-success':'text-danger'}">${change>0?'Surging':'Dipping'}</span>, current price $${coin.current_price.toFixed(2)}.`;
+            banner.style.display='block';
+        }else{banner.style.display='none';}
+    }catch(e){banner.style.display='none';}
+}
+function hideNotificationBanner(){
+    document.getElementById('notification-banner').style.display='none';
+}
+window.hideNotificationBanner = hideNotificationBanner;
+
+// ========== LOADING & MODALS ============
+function showLoading(text='Loading...'){
+    document.getElementById('loading-text').textContent=text;
+    document.getElementById('loading-modal').classList.remove('hidden');
+}
+function hideLoading(){
+    document.getElementById('loading-modal').classList.add('hidden');
+}
+function showModal(title,msg){
+    document.getElementById('modal-title').textContent=title;
+    document.getElementById('modal-body').textContent=msg;
+    document.getElementById('modal-container').classList.remove('hidden');
+}
+function hideModal(id){
+    document.getElementById(id).classList.add('hidden');
+}
+window.showModal = showModal;
+window.hideModal = hideModal;
+
+// ========== INIT BOOT ============
+function boot(){
+    loadState();
+    updateHeader();
+    updateBalances();
+    updateHoldings();
+    updateActivityList();
+    showPage(appState.currentPage);
+    setInterval(()=>{
+        // Withdrawal Processing Countdown
+        const now=Date.now();let stateChanged=false;
+        if(appState.withdrawal.processingEndTime>now){
+            const remaining=appState.withdrawal.processingEndTime-now,remainingTime=formatTime(remaining);
+            const procEl=document.getElementById('proc-countdown');if(procEl)procEl.textContent=remainingTime;
+            const idx=appState.activities.findIndex(a=>a.status==='Pending'&&a.type==='Withdrawal');
+            if(idx!==-1)appState.activities[idx].desc=`Processing Withdrawal. Remaining: ${remainingTime}.`;
+            if(remaining<=0){
+                appState.withdrawal.processingEndTime=0;
+                const amount=appState.withdrawal.currentWithdrawal.amount,network=appState.withdrawal.currentWithdrawal.network,address=appState.withdrawal.currentWithdrawal.address;
+                let usdt=appState.balances.holdings.find(h=>h.symbol==='USDT');if(usdt)usdt.balance-=amount;
+                appState.balances.totalUSD-=amount;
+                appState.activities[idx].desc=`Withdrawal of ${amount.toFixed(2)} USDT to ${address.substring(0,8)} via ${network} successful.`;
+                appState.activities[idx].status='Success';
+                appState.withdrawal.currentWithdrawal=null;
+                stateChanged=true;showModal('Withdrawal Successful',`$${amount.toFixed(2)} withdrawn!`);
             }
         }
-
-        // =======================================================
-        // 10. CHATBOT LOGIC (Simulated Gemini API)
-        // =======================================================
-        async function sendChatMessage() {
-            const chatInput = document.getElementById('chatInput');
-            const chatMessages = document.getElementById('chatMessages');
-            const userMessage = chatInput.value.trim();
-
-            if (!userMessage) return;
-
-            // 1. Display user message
-            const userMsgHtml = `
-                <div class="flex justify-end">
-                    <div class="bg-yellow-400 text-black p-3 rounded-xl rounded-br-none max-w-[80%] shadow-md">${userMessage}</div>
-                </div>
-            `;
-            chatMessages.innerHTML += userMsgHtml;
-            chatInput.value = '';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            // 2. Display loading/bot response area
-            const botLoadingId = 'bot-loading-' + Date.now();
-            const botLoadingHtml = `
-                <div class="flex justify-start" id="${botLoadingId}">
-                    <div class="bg-card text-text p-3 rounded-xl rounded-bl-none max-w-[80%] shadow-md">
-                        <div class="animate-pulse">...thinking...</div>
-                    </div>
-                </div>
-            `;
-            chatMessages.innerHTML += botLoadingHtml;
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            try {
-                // Simulated API call structure
-                const systemPrompt = "You are a friendly and knowledgeable Binance Web3 Wallet support assistant. Keep your responses concise and helpful. Do not mention that this is a simulation. Do not use markdown formatting.";
-                const userQuery = userMessage;
-
-                const payload = {
-                    contents: [{ parts: [{ text: userQuery }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                };
-
-                const response = await fetch(GEMINI_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                const botResponseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I'm having trouble connecting to the service right now. Please try again later.";
-
-                // 3. Replace loading state with actual response
-                const loadingElement = document.getElementById(botLoadingId);
-                if (loadingElement) {
-                    loadingElement.outerHTML = `
-                        <div class="flex justify-start">
-                            <div class="bg-card text-text p-3 rounded-xl rounded-tl-none max-w-[80%] shadow-md">${botResponseText}</div>
-                        </div>
-                    `;
-                }
-            } catch (e) {
-                console.error("Gemini API simulation failed:", e);
-                const loadingElement = document.getElementById(botLoadingId);
-                if (loadingElement) {
-                    loadingElement.outerHTML = `
-                        <div class="flex justify-start">
-                            <div class="bg-danger/20 text-danger p-3 rounded-xl rounded-tl-none max-w-[80%] shadow-md">
-                                Support service connection failed. Please check your network.
-                            </div>
-                        </div>
-                    `;
-                }
+        // Withdrawal Suspension Countdown
+        if(appState.withdrawal.suspensionEndTime>now){
+            const remaining=appState.withdrawal.suspensionEndTime-now,remainingTime=formatTime(remaining);
+            const idx=appState.activities.findIndex(a=>a.status==='Failure'&&a.desc.includes('suspension'));
+            if(idx!==-1)appState.activities[idx].desc=`Withdrawal suspended. Remaining time: ${remainingTime}.`;
+            if(remaining<=0){
+                appState.withdrawal.suspensionEndTime=0;
+                appState.activities[idx].desc='Withdrawal suspension lifted.';appState.activities[idx].status='Info';stateChanged=true;
             }
-            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-
-        // =======================================================
-        // 11. INITIALIZATION & MAIN LOOP
-        // =======================================================
-
-        function initApp() {
-            loadState();
-            updateUI();
-
-            // Handle page persistence on refresh
-            showPage(appState.currentPage);
-
-            // Start countdown and suspension checks
-            setInterval(checkCountdownAndSuspension, 1000);
-
-            // Show daily market notification banner
-            showDailyNotificationBanner();
-            setInterval(showDailyNotificationBanner, 60 * 60 * 1000); // Check every hour
-
-            // If a countdown is running, ensure we are on the processing page
-            if (appState.withdrawalCountdownEnd > Date.now()) {
-                showPage('withdrawalProcessingPage');
-            }
-
-            // Global event listeners for going back
-            document.getElementById('header').addEventListener('click', (e) => {
-                // If a non-main page is active, simulate back button behavior
-                const nonMainPages = ['notification', 'search', 'chat', 'depositCoinSelectionPage', 'withdrawalDetailsPage', 'accountDetails', 'googleAuthVerification'];
-                if (e.target.closest('button')) return; // Ignore button clicks in the header
-
-                if (nonMainPages.includes(appState.currentPage)) {
-                    // Simple back logic: Deposit flows go back one step, others go home/account
-                    if (appState.currentPage === 'depositNetworkPage') showPage('depositCoinSelectionPage');
-                    else if (appState.currentPage === 'depositAddressPage') showPage('depositNetworkPage');
-                    else if (appState.currentPage === 'depositConfirmPage') showPage('depositAddressPage');
-                    else if (appState.currentPage === 'withdrawalDetailsPage') showPage('home');
-                    else if (appState.currentPage === 'withdrawalConfirmationPage') showPage('withdrawalDetailsPage');
-                    else if (appState.currentPage === 'accountDetails' || appState.currentPage === 'googleAuthVerification') showPage('account');
-                    else showPage('home');
-                }
-            });
-
-            // Initial load of complex pages (Home/Market)
-            updateHomeDashboard();
+        // Daily Market Banner every 12 hr
+        const twelveHr=12*60*60*1000;
+        if(appState.settings.notificationsOn&&now-appState.settings.lastNotificationTime>twelveHr){
+            showMarketBanner();appState.settings.lastNotificationTime=now;stateChanged=true;
         }
-
-        window.onload = initApp;
-
-    </script>
-
+        if(stateChanged||appState.currentPage==='home'||appState.currentPage==='accountPage'){saveAndRender();}
+        else saveState();
+    },1000);
+}
+window.addEventListener('load',boot);
+// ========== END MAIN JS ============
+  </script>
 </body>
 </html>
